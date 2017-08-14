@@ -47,4 +47,5 @@ if __name__ == '__main__':
 	print "Getting data - It's going to take a while!"
 
 	for index in index_list:
+		print "Converting index {}".format(index)
 		Popen(["es2csv", "-q", "*", "-i", index, "-o", "../csv/" + index + ".csv"])
