@@ -10,8 +10,10 @@ RUN apk add --update --no-cache \
     python-dev \
     py-pip \
     bash \
+    curl \
  && pip install --upgrade pip \
  && pip install es2csv \
- && chmod +x entrypoint.sh /home/script/csv_collector.py
+ && chmod +x entrypoint.sh /home/script/csv_collector.py \
+ && chmod a+r /home/script/config
 
 ENTRYPOINT ["/entrypoint.sh"]
