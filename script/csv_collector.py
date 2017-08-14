@@ -39,7 +39,7 @@ def get_indices(es_url):
 if __name__ == '__main__':
 
 	config = ConfigParser.ConfigParser()
-	config.read('./config')
+	config.readfp(open('/home/script/config', 'r'))
 	es_url = str(config.get('main', 'elasticsearch_url'))
 
 	index_list = get_indices(es_url)
@@ -47,4 +47,4 @@ if __name__ == '__main__':
 	print "Getting data - It's going to take a while!"
 
 	for index in index_list:
-		Popen(["es2csv", "-q", "*", "-i", index, "-o", index + ".csv" ])
+		Popen(["es2csv", "-q", "*", "-i", index, "-o", "../csv/" + index + ".csv"])

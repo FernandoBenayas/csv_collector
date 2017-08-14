@@ -1,4 +1,4 @@
-# CSV COLLECTOR
+#CSV COLLECTOR
 
 Just build it and run it, and it will detect all the indices, collect all the documents from each index and turn them into csv. 
 
