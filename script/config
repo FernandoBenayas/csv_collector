@@ -1,2 +1,2 @@
 [main]
-elasticsearch_url = localhost:9200
+elasticsearch_url = elasticsearch:9200
