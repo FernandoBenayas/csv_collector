@@ -15,3 +15,4 @@ echo You used pókeflute. Elasticsearch just woke up.
 /bin/sleep 2
 
 python /home/script/csv_collector.py
+#bash

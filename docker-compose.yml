@@ -1,20 +1,11 @@
 version: '3'
 services:
- csv_collector:
-  image: p/p
-  container_name: csv_collector
-  volumes:
-   - /home/fbenayas/Escritorio/data/csv_collector/csv:/home/csv
-  depends_on:
-   - elasticsearch
-  networks:
-   - el
  elasticsearch:
   image: docker.elastic.co/elasticsearch/elasticsearch:5.5.1
   container_name: elasticsearch
   volumes:
-   - /home/fbenayas/Escritorio/data/data:/usr/share/elasticsearch/data
-   - /home/fbenayas/Escritorio/data/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+   - /home/fbenayas/elasticsearch/data:/usr/share/elasticsearch/data
+   - /home/fbenayas/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
   environment:
    - http.host=0.0.0.0
    - transport.host=127.0.0.1
@@ -23,6 +14,25 @@ services:
    - 9300:9300
   networks:
    - el
+ csv_collector:
+  image: csv/prueba
+  container_name: csv_collector
+  volumes:
+   - /home/fbenayas/csv_collector/csv:/root/csv
+  depends_on:
+   - elasticsearch
+  networks:
+   - el
+  tty: true
+ kibana:
+  image: docker.elastic.co/kibana/kibana:5.5.1
+  container_name: kibana
+  networks:
+   - el
+  ports:
+   - 5601:5601
+  depends_on:
+   - elasticsearch
 networks:
  el:
   driver: bridge

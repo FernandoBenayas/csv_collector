@@ -48,4 +48,6 @@ if __name__ == '__main__':
 
 	for index in index_list:
 		print "Converting index {}".format(index)
-		Popen(["es2csv", "-q", "*", "-i", index, "-o", "../csv/" + index + ".csv"])
+		Popen(["es2csv", "-q", "_type:node", "-i", index, "-o", "../csv/" + index + + "_node" + ".csv"])
+		Popen(["es2csv", "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + + "_simstate" + ".csv"])
+		Popen(["es2csv", "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + + "_topology" + ".csv"])

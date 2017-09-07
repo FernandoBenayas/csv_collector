@@ -1,19 +1,23 @@
-FROM gliderlabs/alpine:3.6
+FROM ubuntu:16.04
 
 USER root
 
 COPY entrypoint.sh /
-COPY script /home/script
+COPY script /root/script
 
-RUN apk add --update --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python \
     python-dev \
-    py-pip \
+    python-pip \
+    python-setuptools \
     bash \
     curl \
+    vim \
  && pip install --upgrade pip \
  && pip install es2csv \
- && chmod +x entrypoint.sh /home/script/csv_collector.py \
- && chmod a+r /home/script/config
+ && pip install numpy \
+ && pip install pandas \
+ && chmod +x entrypoint.sh /root/script/csv_collector.py \
+ && chmod a+r /root/script/config
 
 ENTRYPOINT ["/entrypoint.sh"]
