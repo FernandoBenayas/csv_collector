@@ -4,6 +4,7 @@ USER root
 
 COPY entrypoint.sh /
 COPY script /root/script
+COPY csv /root/csv
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python \

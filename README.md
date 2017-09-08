@@ -4,7 +4,13 @@ This docker image will download data from sdn_intelligence's elasticsearch and t
 Build it by going into the directory of the Dockerfile and executing
  
 ```python
-sudo docker build -t whatevername/youwant .
+sudo docker build -t name/oftheimage .
+```
+
+then create and run the container
+
+```bash
+sudo docker run --rm --name=nameofthecontainer name/oftheimage  -v path/to/the/csv/folder:/root/csv
 ```
 
 and it will began instantly.

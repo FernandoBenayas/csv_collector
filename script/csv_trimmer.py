@@ -9,8 +9,9 @@ for file in os.listdir("/root/csv"):
 
 for csv in csv_list:
 	df = pd.read_csv(str(csv))
-	columns_list = df.columns.values.tolist()
 
+	#Dropping useless data
+	columns_list = df.columns.values.tolist()
 	for column in columns_list:
 		if 'flow-node-inventory:table' in column and 'flow-node-inventory:table.68' not in column:
 			df.drop(column, axis=1, inplace=True)
@@ -27,6 +28,21 @@ for csv in csv_list:
 		elif 'flow-node-inventory:switch-features' in column or 'opendaylight-group-statistics:group-features' in column:
 			df.drop(column, axis=1, inplace=True)
 
-	print len(df.columns)
 
+	columns_list = df.columns.values.tolist()
+	flow_columns_list = []
+	for column in columns_list:
+		#USE REGEXP
+		if 'flow-node-inventory:table.68.flow.' in column and '.id' in column and '_table' not in column and 'time' not in column :
+			flow_columns_list.append(column)
+
+	df["number_of_flows"] = ""
+
+	for index, row in df.iterrows():
+		counter = 0
+		for column in flow_columns_list:
+			if "UF" not in str(row[column])	and str(row[column]) != 'nan':
+				counter += 1
+
+		df.set_value(index, "number_of_flows", counter)
 	df.to_csv("modified.csv")

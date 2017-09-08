@@ -17,8 +17,6 @@ services:
  csv_collector:
   image: csv/prueba
   container_name: csv_collector
-  volumes:
-   - /home/fbenayas/csv_collector/csv:/root/csv
   depends_on:
    - elasticsearch
   networks:
