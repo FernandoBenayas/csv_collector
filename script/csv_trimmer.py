@@ -1,14 +1,11 @@
 import pandas as pd
+import datetime as dt
 import os
 
-csv_list_node = []
 
-for file in os.listdir("/root/csv"):
-	if file.endswith("node.csv"):
-		csv_list_node.append(os.path.join("/root/csv", file))
+def trimmer(sim_list, sim_id):
 
-for csv in csv_list_node:
-	df = pd.read_csv(str(csv))
+	df = pd.read_csv(str(sim_list[0]))
 
 	#Dropping useless data
 	columns_list = df.columns.values.tolist()
@@ -27,8 +24,6 @@ for csv in csv_list_node:
 			df.drop(column, axis=1, inplace=True)
 		elif 'flow-node-inventory:switch-features' in column or 'opendaylight-group-statistics:group-features' in column:
 			df.drop(column, axis=1, inplace=True)
-
-	columns_list = df.columns.values.tolist()
 
 	print 'Creating flow list'
 
@@ -136,23 +131,137 @@ for csv in csv_list_node:
 			df.set_value(index, "node_connector_down", 'isolated')
 		node_connector_counter = 0
 
-	df.to_csv("modified_node.csv")
+	df['err_type'] = ""
+	df['action'] = "sample"
 
-csv_list_topo = []
+	df.to_csv(sim_id + "_modified_node.csv")
+	
+	print 'Modifying topology csv'
 
-for file in os.listdir("/root/csv"):
-	if file.endswith("topology.csv"):
-		csv_list_topo.append(os.path.join("/root/csv", file))
-
-for csv in csv_list_topo:
-	df = pd.read_csv(str(csv))
+	df2 = pd.read_csv(str(sim_list[2]))
 
 	print 'Selecting ip columns in topology csv'
 
-	columns_list = df.columns.values.tolist()
+	columns_list = df2.columns.values.tolist()
 
 	for column in columns_list:
 		if any( x not in column for x in ('host-tracker-service:addresses.', '.ip')):
-			df.drop(column, axis=1, inplace=True)
+			df2.drop(column, axis=1, inplace=True)
 
-	df.to_csv("modified_topo.csv")
+	df2['err_type'] = ""
+	df2['action'] = "sample"
+
+	df2.to_csv(sim_id + "_modified_topo.csv")
+
+	return
+	
+def time_sync_node(sim_list, sim_id):
+
+	df_state = pd.read_csv(str(sim_list[1]))
+	df_node = pd.read_csv(sim_id + '_modified_node.csv')
+	columns_list_state = df_state.columns.values.tolist()
+	columns_list_node = df_node.columns.values.tolist()
+
+	for index, row in df_node.iterrows():
+		for column in columns_list_node:
+			if '@timestamp' in str(column):
+				timestamp = str(row[column])
+				list_timestamp = timestamp.split("T")
+				date_list = list_timestamp[0].split("-")
+				time_list = list_timestamp[1].split(":")
+				seconds_list = time_list[2].split(".")
+				copy = seconds_list[1]
+				seconds_list[1] = int(copy.replace("Z", ""))/1000
+
+				node_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+
+
+				min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
+
+				for index2, row2 in df_state.iterrows():
+					for column in columns_list_state:
+						if '@timestamp' in str(column):
+							timestamp = str(row2[column])
+							list_timestamp = timestamp.split("T")
+							date_list = list_timestamp[0].split("-")
+							time_list = list_timestamp[1].split(":")
+							seconds_list = time_list[2].split(".")
+							copy = seconds_list[1]
+							seconds_list[1] = int(copy.replace("Z", ""))/1000
+							state_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+							diff = (node_datetime - state_datetime).total_seconds()
+
+							if diff >= 0 and diff < min_diff['delta']:
+
+								min_diff['delta'] = diff
+								min_diff['err'] = str(row2['err.err_type'])
+								min_diff['action'] = str(row2['action'])
+
+				df_node.set_value(index, 'err_type', min_diff['err'])
+				df_node.set_value(index, 'action', str(min_diff['action']))
+				df_node.to_csv(sim_id + "_modified_node.csv")
+	return
+
+def time_sync_topo(sim_list, sim_id):
+
+	df_state = pd.read_csv(str(sim_list[1]))
+	df_topo = pd.read_csv(sim_id + '_modified_topo.csv')
+	columns_list_state = df_state.columns.values.tolist()
+	columns_list_topo = df_topo.columns.values.tolist()
+
+	for index, row in df_topo.iterrows():
+		for column in columns_list_topo:
+			if '@timestamp' in str(column):
+				timestamp = str(row[column])
+				list_timestamp = timestamp.split("T")
+				date_list = list_timestamp[0].split("-")
+				time_list = list_timestamp[1].split(":")
+				seconds_list = time_list[2].split(".")
+				copy = seconds_list[1]
+				seconds_list[1] = int(copy.replace("Z", ""))/1000
+
+				node_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+
+				min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
+
+				for index2, row2 in df_state.iterrows():
+					for column in columns_list_state:
+						if '@timestamp' in str(column):
+							timestamp = str(row2[column])
+							list_timestamp = timestamp.split("T")
+							date_list = list_timestamp[0].split("-")
+							time_list = list_timestamp[1].split(":")
+							seconds_list = time_list[2].split(".")
+							copy = seconds_list[1]
+							seconds_list[1] = int(copy.replace("Z", ""))/1000
+							state_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+							diff = (node_datetime - state_datetime).total_seconds()
+
+							if diff >= 0 and diff < min_diff['delta']:
+
+								min_diff['delta'] = diff
+								min_diff['err'] = str(row2['err.err_type'])
+								min_diff['action'] = str(row2['action'])
+
+				df_topo.set_value(index, 'err_type', min_diff['err'])
+				df_topo.set_value(index, 'action', str(min_diff['action']))
+				df_topo.to_csv(sim_id + "_modified_topo.csv")
+	return
+
+if __name__ == '__main__':
+
+	csv_dict = {}
+
+	for file in os.listdir("/root/csv"):
+		if file.endswith("node.csv"):
+			sim_index = file.replace("_node.csv", "")
+			csv_dict[sim_index] = ["/root/csv/" + str(sim_index) + "_node.csv", "/root/csv/" + str(sim_index) + "_simstate.csv", "/root/csv/" + str(sim_index) + "_topology.csv"]
+
+	for key in csv_dict:
+		print "Trimming..."
+		trimmer(csv_dict[key], key)
+		print "Time syncing..."
+		if 'node' in csv_dict[key]:
+			time_sync_node(csv_dict[key], key)
+		elif 'topo' in csv_dict[key]:
+			#time_sync_topo(csv_dict[key], key)
