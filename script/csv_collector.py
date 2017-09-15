@@ -39,7 +39,7 @@ def get_indices(es_url):
 if __name__ == '__main__':
 
 	config = ConfigParser.ConfigParser()
-	config.readfp(open('/home/script/config', 'r'))
+	config.readfp(open('config', 'r'))
 	es_url = str(config.get('main', 'elasticsearch_url'))
 
 	index_list = get_indices(es_url)
@@ -48,6 +48,6 @@ if __name__ == '__main__':
 
 	for index in index_list:
 		print "Converting index {}".format(index)
-		Popen(["es2csv", "-q", "_type:node", "-i", index, "-o", "../csv/" + index + + "_node" + ".csv"])
-		Popen(["es2csv", "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + + "_simstate" + ".csv"])
-		Popen(["es2csv", "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + + "_topology" + ".csv"])
+		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:node", "-i", index, "-o", "../csv/" + index + "_node" + ".csv"])
+		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + "_simstate" + ".csv"])
+		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"])

@@ -3,7 +3,7 @@ import datetime as dt
 import os
 
 
-def trimmer(sim_list, sim_id):
+def general_trimmer(sim_list, sim_id):
 
 	df = pd.read_csv(str(sim_list[0]))
 
@@ -175,7 +175,6 @@ def time_sync_node(sim_list, sim_id):
 
 				node_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
 
-
 				min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
 
 				for index2, row2 in df_state.iterrows():
@@ -199,7 +198,8 @@ def time_sync_node(sim_list, sim_id):
 
 				df_node.set_value(index, 'err_type', min_diff['err'])
 				df_node.set_value(index, 'action', str(min_diff['action']))
-				df_node.to_csv(sim_id + "_modified_node.csv")
+
+	df_node.to_csv(sim_id + "_modified_node.csv")
 	return
 
 def time_sync_topo(sim_list, sim_id):
@@ -245,7 +245,83 @@ def time_sync_topo(sim_list, sim_id):
 
 				df_topo.set_value(index, 'err_type', min_diff['err'])
 				df_topo.set_value(index, 'action', str(min_diff['action']))
-				df_topo.to_csv(sim_id + "_modified_topo.csv")
+
+	df_topo.to_csv(sim_id + "_modified_topo.csv")
+	return
+
+
+def modified_flow_columns(sim_list, sim_id):
+
+	df = pd.read_csv(sim_id + '_modified_node.csv')
+	columns_list = df.columns.values.tolist()
+
+	df["changed_inport"] = "sample"
+
+	number_of_flows = 0
+	for column in columns_list:
+		if 'flow-node-inventory:table.68.flow.' in column:
+			flow_number = int(column.split('.')[3])
+			if flow_number > number_of_flows:
+				number_of_flows = flow_number
+
+	for index, row in df.iterrows():
+
+		in_port_dictionary = {}
+		for i in range(number_of_flows + 1):
+			try:
+				in_port = str(row['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'])
+				in_port_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
+				break
+			except KeyError as err:
+				print 'Ignoring flow: %s' % err
+
+		timestamp = str(row['@timestamp'])
+		list_timestamp = timestamp.split("T")
+		date_list = list_timestamp[0].split("-")
+		time_list = list_timestamp[1].split(":")
+		seconds_list = time_list[2].split(".")
+		copy = seconds_list[1]
+		seconds_list[1] = int(copy.replace("Z", ""))/1000
+		origin_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+
+		min_diff = {'row': 'sample', 'delta': dt.timedelta.max.total_seconds()}
+
+		for index2, row2, in df.iterrows():
+			if row['id'] == row2['id']:
+				timestamp = str(row2['@timestamp'])
+				list_timestamp = timestamp.split("T")
+				date_list = list_timestamp[0].split("-")
+				time_list = list_timestamp[1].split(":")
+				seconds_list = time_list[2].split(".")
+				copy = seconds_list[1]
+				seconds_list[1] = int(copy.replace("Z", ""))/1000
+				state_datetime = dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+				diff = (origin_datetime - state_datetime).total_seconds()
+				
+				if diff > 0 and diff < min_diff['delta']:
+					min_diff['row'] = row2
+					min_diff['delta'] = diff
+
+		if str(min_diff['row']) == 'sample':
+			df.set_value(index, 'changed_inport', 'First')
+
+		else:
+			in_port_dictionary_b = {}
+
+			for i in range(number_of_flows + 1):
+				row2 = min_diff['row']
+				try:
+					in_port = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'])
+					in_port_dictionary_b[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
+				except KeyError as err:
+					print "Ignoring flow: %s" % err
+			for key in in_port_dictionary:
+				if in_port_dictionary[key] != in_port_dictionary_b[key]:
+					df.set_value(index, 'changed_inport', 'True')
+				else:
+					df.set_value(index, 'changed_inport', 'False')
+
+	df.to_csv(sim_id + "_modified_node.csv")
 	return
 
 if __name__ == '__main__':
@@ -259,9 +335,9 @@ if __name__ == '__main__':
 
 	for key in csv_dict:
 		print "Trimming..."
-		trimmer(csv_dict[key], key)
+		general_trimmer(csv_dict[key], key)
 		print "Time syncing..."
-		if 'node' in csv_dict[key]:
-			time_sync_node(csv_dict[key], key)
-		elif 'topo' in csv_dict[key]:
-			#time_sync_topo(csv_dict[key], key)
+		time_sync_node(csv_dict[key], key)
+		#time_sync_topo(csv_dict[key], key)
+		print "Checking in-ports..."
+		modified_flow_columns(csv_dict[key], key)
