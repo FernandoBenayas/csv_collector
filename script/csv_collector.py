@@ -1,5 +1,6 @@
 import ConfigParser
 from subprocess import Popen
+from subprocess import 	PIPE
 from os import chmod
 from time import sleep
 import stat
@@ -35,7 +36,6 @@ def get_indices(es_url):
 
 	return array_response
 
-
 if __name__ == '__main__':
 
 	config = ConfigParser.ConfigParser()
@@ -48,6 +48,9 @@ if __name__ == '__main__':
 
 	for index in index_list:
 		print "Converting index {}".format(index)
-		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:node", "-i", index, "-o", "../csv/" + index + "_node" + ".csv"])
-		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + "_simstate" + ".csv"])
-		Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"])
+		a = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:node", "-i", index, "-o", "../csv/" + index + "_node" + ".csv"], stdout=PIPE)
+		a.communicate()
+		b = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + "_simstate" + ".csv"], stdout=PIPE)
+		b.communicate()
+		c = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"], stdout=PIPE)
+		c.communicate()
