@@ -1,0 +1,8 @@
+{
+	"sort" : [
+		{"@timestamp" : {"order" : "asc"}}
+	], 
+	"query" : {
+		"match": {"_type" : "sim_state"}
+	}
+}

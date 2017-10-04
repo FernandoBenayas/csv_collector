@@ -3,7 +3,6 @@ import datetime as dt
 import os
 import sys
 
-
 def datetimefy(timestamp):
 
 	list_timestamp = timestamp.split("T")
@@ -15,9 +14,70 @@ def datetimefy(timestamp):
 
  	return dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
 
-def general_trimmer(sim_list, sim_id):
 
-	df = pd.read_csv(str(sim_list[0]))
+def limit_size(sim_list, sim_id):
+
+	#Dictionary of node csvs; each key will be the original node csv, and each value will be 
+	#a list of the files in which the original csv has been splitted
+	nodes_dict = {}
+	#Same for topo csvs dictionary
+	topo_dict = {}
+
+	for csv in sim_list:
+		df = pd.read_csv(str(csv))
+
+		#Searching for the size of the simulation
+		if 'node' in csv:
+			df_size = df[["id"]]
+			size = 0
+			for row in df_size.iterrows():
+				of_number = int(row[1][0].split("w")[1])
+				if of_number > size:
+					size = of_number
+			del df_size
+
+		#Splitting into 5000 rows dataframes
+		csv_length = df.shape[0]
+		print 'Number of rows: %s' % csv_length
+		if csv_length <= 5000 and 'simstate' not in csv:
+			if 'node' in csv:
+				print 'CSV too small to split'
+				buffer_df = df[-size:0]
+				csv_buffer = str(csv).replace('.csv','_buffer'+'.csv')
+				buffer_df.to_csv(csv_buffer)
+				nodes_dict[str(csv)] = [str(csv)]
+			elif 'topo' in csv:
+				print 'CSV too small to split'
+				buffer_df = df[-size:0]
+				csv_buffer = str(csv).replace('.csv','_buffer'+'.csv')
+				buffer_df.to_csv(csv_buffer)
+				topo_dict[str(csv)] = [str(csv)]
+		elif csv_length > 5000 and 'simstate' not in csv:
+			print 'Splitting csv...'
+			shards = []
+			number_of_splits = int(csv_length / 5000)
+			for i in range(number_of_splits+1):
+				new_df = df[5000*i:5000*(i+1)]
+				buffer_df = df[5000*i-size:5000*i]
+				csv_name = str(csv).replace('.csv', '_'+str(i)+'.csv').replace('/csv', '/csv/shards')
+				csv_buffer = str(csv).replace('.csv', '_'+str(i)+'_buffer'+'.csv').replace('/csv', '/csv/shards')
+				shards.append(csv_name)
+				new_df.to_csv(csv_name)
+				buffer_df.to_csv(csv_buffer)
+			if 'node' in csv:
+				nodes_dict[str(csv)] = shards
+			elif 'topo' in csv:
+				topo_dict[str(csv)] = shards
+				del new_df
+				del buffer_df
+
+		#Releasing memory
+		del df
+	return (nodes_dict, topo_dict, size)
+
+def general_trimmer(sim_csv, sim_id):
+
+	df = pd.read_csv(str(sim_csv))
 
 	#Dropping useless data
 	columns_list = df.columns.values.tolist()
@@ -39,13 +99,7 @@ def general_trimmer(sim_list, sim_id):
 
 	print 'Creating flow list'
 
-	flow_columns_list = []
-
-	for column in columns_list:
-		#USE REGEXP
-		if 'flow-node-inventory:table.68.flow.' in column and '.id' in column and '_table' not in column and 'time' not in column :
-			flow_columns_list.append(column)
-
+	flow_columns_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and '_table' not in s and 'time' not in s ]
 	df["existence_of_flows"] = ""
 
 	for index, row in df.iterrows():
@@ -60,13 +114,7 @@ def general_trimmer(sim_list, sim_id):
 
 	print 'Creating lldp list'
 
-	type_columns_list = []
-	
-	for column in columns_list:
-	#USE REGEXP
-		if 'match.ethernet-type' in column:
-			type_columns_list.append(column)
-
+	type_columns_list = [s for s in columns_list if 'match.ethernet-type' in s]
 	df['not_dropping_lldp'] = ""
 
 	for index, row in df.iterrows():
@@ -83,17 +131,9 @@ def general_trimmer(sim_list, sim_id):
 					break
 			else:
 				df.set_value(index, "not_dropping_lldp", 'Not LLDP flow')
-
-
 	print 'Creating hard timeout field'
 
-	h_timeout_list = []
-
-	for column in columns_list:
-	#USE REGEXP
-		if 'hard-timeout' in column:
-			h_timeout_list.append(column)
-
+	h_timeout_list = [s for s in columns_list if 'hard-timeout' in s]
 	df['modified_h_timeout'] = ""
 
 	for index, row in df.iterrows():
@@ -106,13 +146,7 @@ def general_trimmer(sim_list, sim_id):
 
 	print 'Creating idle timeout field'
 
-	i_timeout_list = []
-
-	for column in columns_list:
-	#USE REGEXP
-		if 'idle-timeout' in column:
-			i_timeout_list.append(column)
-
+	i_timeout_list = [s for s in columns_list if 'idle-timeout' in s]
 	df['modified_i_timeout'] = ""
 
 	for index, row in df.iterrows():
@@ -125,13 +159,7 @@ def general_trimmer(sim_list, sim_id):
 
 	print 'Creating node connector list'
 
-	node_connector_list = []
-
-	for column in columns_list:
-	#USE REGEXP
-		if 'node-connector.' in column and '.id' in column and 'address' not in column:
-			node_connector_list.append(column)
-
+	node_connector_list = [s for s in columns_list if 'node-connector.' in s and '.id' in s and 'address' not in s]
 	df['node_connector_down'] = ""
 	node_connector_counter = 0
 
@@ -150,37 +178,34 @@ def general_trimmer(sim_list, sim_id):
 			df.set_value(index, "node_connector_down", 'isolated')
 		node_connector_counter = 0
 
-	df['err_type'] = ""
+	df['err_type'] = "sample"
 	df['action'] = "sample"
 
-	df.to_csv(sim_id + "_modified_node.csv")
-
+	df.to_csv(sim_csv.replace('_node', '_modified_node'))
 	del df
-	
-	print 'Modifying topology csv'
+	return
 
-	df2 = pd.read_csv(str(sim_list[2]))
+def topology_csv_trimmer(sim_csv, sim_id):
 
+	df2 = pd.read_csv(str(sim_csv), engine='python')
 	print 'Selecting ip columns in topology csv'
-
 	columns_list = df2.columns.values.tolist()
 
 	for column in columns_list:
-		if not any(x in str(column) for x in ['host-tracker-service:addresses.', '.ip', '@timestamp']):
+		if not all(x in str(column) for x in ['host-tracker-service:addresses.', '.ip']) and '@timestamp' not in column:
 			df2.drop(column, axis=1, inplace=True)
 
-	df2['err_type'] = ""
+	df2['err_type'] = "sample"
 	df2['action'] = "sample"
-
-	df2.to_csv(sim_id + "_modified_topo.csv")
+	df2.to_csv(sim_csv.replace('_topology', '_modified_topo'))
 
 	del df2
 	return
 	
-def time_sync_node(sim_list, sim_id):
+def time_sync_node(sim_csv, sim_id):
 
-	df_state = pd.read_csv(str(sim_list[1]))
-	df_node = pd.read_csv(sim_id + '_modified_node.csv')
+	df_state = pd.read_csv('/root/csv/' + sim_id + '_simstate.csv')
+	df_node = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
 	columns_list_state = df_state.columns.values.tolist()
 	columns_list_node = df_node.columns.values.tolist()
 
@@ -194,24 +219,26 @@ def time_sync_node(sim_list, sim_id):
 			diff = (node_datetime - state_datetime).total_seconds()
 
 			if diff >= 0 and diff < min_diff['delta']:
-
 				min_diff['delta'] = diff
-				min_diff['err'] = str(row2['err.err_type'])
+				if "start" in str(row2['action']):
+					min_diff['err'] = '-'
+				else:
+					min_diff['err'] = str(row2['err.err_type'])
 				min_diff['action'] = str(row2['action'])
 
-		df_node.set_value(index, 'err_type', min_diff['err'])
+		df_node.set_value(index, 'err_type', str(min_diff['err']))
 		df_node.set_value(index, 'action', str(min_diff['action']))
 
-	df_node.to_csv(sim_id + "_modified_node.csv", index=False)
+	df_node.to_csv(sim_csv.replace('_node', '_modified_node'), index=False)
 	del df_node
 	del df_state
 	del df2_state
 	return
 
-def time_sync_topo(sim_list, sim_id):
+def time_sync_topo(sim_csv, sim_id):
 
-	df_state = pd.read_csv(str(sim_list[1]))
-	df_topo = pd.read_csv(sim_id + '_modified_topo.csv')
+	df_state = pd.read_csv('/root/csv/' + sim_id + '_simstate.csv')
+	df_topo = pd.read_csv(str(sim_csv.replace('_topology', '_modified_topo')))
 	columns_list_state = df_state.columns.values.tolist()
 	columns_list_topo = df_topo.columns.values.tolist()
 
@@ -225,52 +252,38 @@ def time_sync_topo(sim_list, sim_id):
 			diff = (node_datetime - state_datetime).total_seconds()
 
 			if diff >= 0 and diff < min_diff['delta']:
-
 				min_diff['delta'] = diff
-				min_diff['err'] = str(row2['err.err_type'])
+				if "start" in str(row2['action']):
+					min_diff['err'] = '-'
+				else:
+					min_diff['err'] = str(row2['err.err_type'])
 				min_diff['action'] = str(row2['action'])
 
-		df_topo.set_value(index, 'err_type', min_diff['err'])
+		df_topo.set_value(index, 'err_type', str(min_diff['err']))
 		df_topo.set_value(index, 'action', str(min_diff['action']))
 
-	df_topo.to_csv(sim_id + "_modified_topo.csv", index=False)
+	df_topo.to_csv(sim_csv.replace('_topology', '_modified_topo'), index=False)
 	del df_topo
 	del df_state
 	del df2_state
 	return
 
-def limit_size(sim_list, sim_id):
+def modified_port_columns(sim_csv, sim_id):
 
-	for csv in sim_list:
-		df = pd.read_csv(str(csv))
-		csv_length = df.shape[0]
-		print 'Number of rows: %s' % csv_length
-		
-		if csv_length < 5000:
-			print 'CSV too small to crop'
-		else:
-			print 'Cropping csv...'
-			df.drop(df.index[[5000, csv_length-1]])
-			df.to_csv(str(csv), index=False)
-		del df
-	return
-
-def modified_port_columns(sim_list, sim_id):
-
-	df3 = pd.read_csv(sim_id + '_modified_node.csv')
+	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	columns_list = df3.columns.values.tolist()
 
 	df3["changed_inport"] = "sample"
 
+	flow_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' in s]
 	number_of_flows = 0
-	for column in columns_list:
-		if 'flow-node-inventory:table.68.flow.' in column:
-			flow_number = int(column.split('.')[3])
-			if flow_number > number_of_flows:
-				number_of_flows = flow_number
+	for column in flow_list:
+		flow_number = int(column.split('.')[3])
+		if flow_number > number_of_flows:
+			number_of_flows = flow_number
 
 	for index, row in df3.iterrows():
-
 		in_port_dictionary = {}
 		for i in range(number_of_flows + 1):
 			try:
@@ -283,13 +296,24 @@ def modified_port_columns(sim_list, sim_id):
 		origin_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'row': 'sample', 'delta': dt.timedelta.max.total_seconds()}
 
+		#Getting all rows of the same switch
 		df4 = df3.ix[df3.id == str(row['id'])]
+		df4buffer = buffer_df.ix[buffer_df.id == str(row['id'])]
+
+		#Checking for the closest entry of the same switch in the
+		#dataframe and the buffer
 		for index2, row2, in df4.iterrows():
 			state_datetime = datetimefy(str(row2['@timestamp']))
 			diff = (origin_datetime - state_datetime).total_seconds()
-			
 			if diff > 0 and diff < min_diff['delta']:
 				min_diff['row'] = row2
+				min_diff['delta'] = diff
+
+		for index_buffer, row_buffer  in df4buffer.iterrows():
+			state_datetime = datetimefy(str(row_buffer['@timestamp']))
+			diff = (origin_datetime - state_datetime).total_seconds()
+			if diff > 0 and diff < min_diff['delta']:
+				min_diff['row'] = row_buffer
 				min_diff['delta'] = diff
 
 		if str(min_diff['row']) == 'sample':
@@ -310,19 +334,23 @@ def modified_port_columns(sim_list, sim_id):
 				else:
 					df3.set_value(index, 'changed_inport', 'False')
 
-	df3.to_csv(sim_id + "_modified_node.csv", index=False)
+	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df3
 	del df4
+	del buffer_df
 	return
 
-def packets_delta(sim_list, sim_id):
-	df5 = pd.read_csv(sim_id + '_modified_node.csv')
+def packets_delta(sim_csv, sim_id):
+	df5 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	columns_list = df5.columns.values.tolist()
 
 	df5["packets_transmitted"] = 0
 	df5["packets_received"] = 0
 	df5["transmitted_delta"] = '0'
 	df5["received_delta"] = '0'
+	buffer_df["packets_transmitted"] = 0
+	buffer_df["packets_received"] = 0
 
 	for index, row in df5.iterrows():
 		packets_received = 0
@@ -338,16 +366,42 @@ def packets_delta(sim_list, sim_id):
 		df5.set_value(index, 'packets_transmitted', packets_transmitted)
 		df5.set_value(index, 'packets_received', packets_received)
 
+	for index, row in buffer_df.iterrows():
+		packets_received = 0
+		packets_transmitted = 0
+		for column in columns_list:
+			if 'node-connector' in column and 'packets.received' in column:
+				if str(row[column]) != 'nan':
+					packets_received += int(row[column])
+			elif 'node-connector' in column and 'packets.transmitted' in column:
+				if str(row[column]) != 'nan':
+					packets_transmitted += int(row[column])
+
+		buffer_df.set_value(index, 'packets_transmitted', packets_transmitted)
+		buffer_df.set_value(index, 'packets_received', packets_received)
+
+	#DEBUGGING
+	buffer_df.to_csv(str(sim_csv).replace('.csv', '_buffer.csv'), index=False)
+
 	for index, row in df5.iterrows():
 		end_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'row': 'sample', 'delta': sys.maxint }
 
 		df6 = df5.ix[df5.id == str(row['id'])]
+		df6buffer = buffer_df.ix[buffer_df.id == str(row['id'])]
+
 		for index2, row2 in df6.iterrows():
 			origin_datetime = datetimefy(str(row2['@timestamp']))
 			diff = (end_datetime - origin_datetime).total_seconds()
 			if diff > 0 and min_diff['delta'] > diff:
 				min_diff['row'] = row2
+				min_diff['delta'] = diff
+
+		for index_buffer, row_buffer in df6buffer.iterrows():
+			origin_datetime = datetimefy(str(row_buffer['@timestamp']))
+			diff = (end_datetime - origin_datetime).total_seconds()
+			if diff > 0 and min_diff['delta'] > diff:
+				min_diff['row'] = row_buffer
 				min_diff['delta'] = diff
 
 		if str(min_diff['row']) == 'sample':
@@ -359,29 +413,28 @@ def packets_delta(sim_list, sim_id):
 			df5.set_value(index, 'transmitted_delta', str(transmitted_delta))
 			df5.set_value(index, 'received_delta', str(received_delta))
 
-	df5.to_csv(sim_id + '_modified_node.csv', index=False)
+	df5.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df5
 	del df6
-
 	return
 
-def modified_output_columns(sim_list, sim_id):
+def packets_average(sim_csv, sim_id, window_time = 30):
+	return
 
-	df3 = pd.read_csv(sim_id + '_modified_node.csv')
+def modified_output_columns(sim_csv, sim_id):
+
+	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	columns_list = df3.columns.values.tolist()
 
 	df3["changed_output"] = "sample"
 
-	#CHANGE THIS
 	flows_and_actions = {}
 	for column in columns_list:
 		if 'flow-node-inventory:table.68.flow.' in column and '.id' in column and 'idle' not in column:
 			flow_id = int(column.split('.')[3])
-			flows_and_actions[flow_id] = 0
-
-	for key, value in flows_and_actions.items():
-		action_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' + str(key) in s and 'output-action.output-node-connector' in s]
-		flows_and_actions[key] = len(action_list)
+			action_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' + str(flow_id) in s and 'output-action.output-node-connector' in s]
+			flows_and_actions[flow_id] = len(action_list)
 
 	for index, row in df3.iterrows():
 		out_conn_dictionary = {}
@@ -399,13 +452,19 @@ def modified_output_columns(sim_list, sim_id):
 		min_diff = {'row': 'sample', 'delta': dt.timedelta.max.total_seconds()}
 
 		df4 = df3.ix[df3.id == str(row['id'])]
-
+		df4buffer = buffer_df.ix[df3.id == str(row['id'])]
 		for index2, row2, in df4.iterrows():
 			state_datetime = datetimefy(str(row2['@timestamp']))
 			diff = (origin_datetime - state_datetime).total_seconds()
-			
 			if diff > 0 and diff < min_diff['delta']:
 				min_diff['row'] = row2
+				min_diff['delta'] = diff
+
+		for index_buffer, row_buffer, in df4buffer.iterrows():
+			state_datetime = datetimefy(str(row_buffer['@timestamp']))
+			diff = (origin_datetime - state_datetime).total_seconds()
+			if diff > 0 and diff < min_diff['delta']:
+				min_diff['row'] = row_buffer
 				min_diff['delta'] = diff
 
 		if str(min_diff['row']) == 'sample':
@@ -430,31 +489,77 @@ def modified_output_columns(sim_list, sim_id):
 				else:
 					df3.set_value(index, 'changed_output', 'False')
 
-	df3.to_csv(sim_id + "_modified_node.csv", index=False)
+	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df3
 	del df4
+	del df4buffer
 	return
 
+def final_trimmer(sim_csv, sim_id):
+
+	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+	columns_list = df.columns.values.tolist()
+	number_of_columns = len(columns_list)
+	for i in range(0, number_of_columns - 13):
+		if columns_list[i] != 'id' and columns_list[i] != '@timestamp':
+			df.drop(columns_list[i], axis=1, inplace=True)
+
+	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
+	del df
+	return
+
+def join_shards(csv_shards, sim_id, csv_type):
+
+	last_csv = None
+	for i in range(len(csv_shards)-1):
+		df1 = pd.read_csv(str(csv_shards[i]).replace(str(csv_type), 'modified_'+str(csv_type)))		
+		df2 = pd.read_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)))
+		df = pd.concat([df1, df2])
+		df.to_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)))
+		last_csv = str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type))
+	os.rename(str(last_csv), '/root/csv/'+sim_id+'_modified_'+str(csv_type)+'.csv')
+	del df
+	del df1
+	del df2
+	return
+
+#CHANGE TO START
 if __name__ == '__main__':
 
 	csv_dict = {}
-
 	for file in os.listdir("/root/csv"):
 		if file.endswith("node.csv"):
 			sim_index = file.replace("_node.csv", "")
 			csv_dict[sim_index] = ["/root/csv/" + str(sim_index) + "_node.csv", "/root/csv/" + str(sim_index) + "_simstate.csv", "/root/csv/" + str(sim_index) + "_topology.csv"]
 
-	for key in csv_dict:
+	for sim_index in csv_dict:
 		print 'Limiting size...'
-		limit_size(csv_dict[key], key)
-		print "Trimming..."
-		general_trimmer(csv_dict[key], key)
-		print "Time syncing..."
-		time_sync_node(csv_dict[key], key)
-		time_sync_topo(csv_dict[key], key)
-		print "Checking in-ports..."
-		modified_port_columns(csv_dict[key], key)
-		print "Checking output-node-connectors..."
-		modified_output_columns(csv_dict[key], key)
-		print "Checking packets count..."
-		packets_delta(csv_dict[key], key)
+		csv_splitted = limit_size(csv_dict[sim_index], sim_index)
+
+		for key, value in csv_splitted[1].iteritems():
+			for csv in value:
+				print 'Trimming and syncing topo csv...'
+				topology_csv_trimmer(csv, sim_index)
+				time_sync_topo(csv, sim_index)
+			if len(value) > 1:
+				print 'Joining topo shards...'
+				join_shards(value, sim_index, 'topo')
+
+		for key, value in csv_splitted[0].iteritems():
+			for csv in value:
+				print "Working on node csv"
+				print "Trimming..."
+				general_trimmer(csv, sim_index)
+				print "Time syncing..."
+				time_sync_node(csv, sim_index)
+				print "Checking in-ports..."
+				modified_port_columns(csv, sim_index)
+				print "Checking output-node-connectors..."
+				modified_output_columns(csv, sim_index)
+				print "Checking packets count..."
+				packets_delta(csv, sim_index)
+				print "Final trimming..."
+				final_trimmer(csv, sim_index)
+			if len(value) > 1:
+				print 'Joining node shards...'
+				join_shards(value, sim_index, 'node')

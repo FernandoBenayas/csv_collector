@@ -4,6 +4,7 @@ from subprocess import 	PIPE
 from os import chmod
 from time import sleep
 import stat
+import csv_trimmer
 
 def get_indices(es_url):
 
@@ -41,6 +42,7 @@ if __name__ == '__main__':
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
 	es_url = str(config.get('main', 'elasticsearch_url'))
+	window_time = int(config.get('main', 'window_time'))
 
 	index_list = get_indices(es_url)
 
@@ -48,9 +50,12 @@ if __name__ == '__main__':
 
 	for index in index_list:
 		print "Converting index {}".format(index)
-		a = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:node", "-i", index, "-o", "../csv/" + index + "_node" + ".csv"], stdout=PIPE)
+		a = Popen(["es2csv", "-u", "http://"+str(es_url), "-r", "-q", "@./query_node.json", "-i", index, "-o", "../csv/" + index + "_node" + ".csv"], stdout=PIPE)
 		a.communicate()
-		b = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:sim_state", "-i", index, "-o", "../csv/" + index + "_simstate" + ".csv"], stdout=PIPE)
+		b = Popen(["es2csv", "-u", "http://"+str(es_url), "-r", "-q", "@./query_simstate.json", "-i", index, "-o", "../csv/" + index + "_simstate" + ".csv"], stdout=PIPE)
 		b.communicate()
-		c = Popen(["es2csv", "-u", "http://"+str(es_url), "-q", "_type:topology", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"], stdout=PIPE)
+		c = Popen(["es2csv", "-u", "http://"+str(es_url), "-r", "-q", "@./query_topo.json", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"], stdout=PIPE)
 		c.communicate()
+
+		#csv_trimmer.start(window_time)
+
