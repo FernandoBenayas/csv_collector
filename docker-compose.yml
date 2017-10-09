@@ -4,7 +4,7 @@ services:
   image: docker.elastic.co/elasticsearch/elasticsearch:5.5.1
   container_name: elasticsearch
   volumes:
-   - /home/fbenayas/Downloads/data:/usr/share/elasticsearch/data
+   - /home/fbenayas/Downloads/data2:/usr/share/elasticsearch/data
    - /home/fbenayas/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
   environment:
    - http.host=0.0.0.0

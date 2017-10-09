@@ -42,7 +42,6 @@ if __name__ == '__main__':
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
 	es_url = str(config.get('main', 'elasticsearch_url'))
-	window_time = int(config.get('main', 'window_time'))
 
 	index_list = get_indices(es_url)
 
