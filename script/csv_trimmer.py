@@ -4,6 +4,7 @@ import os
 import glob
 import sys
 import ConfigParser
+import math
 
 def datetimefy(timestamp):
 
@@ -224,7 +225,7 @@ def add_topology_field(sim_csv, sim_id):
 
 	for column in ip_column_list:
 		ip = first_df.iloc[0][column]
-		if 'nan' not in ip:
+		if 'nan' not in str(ip):
 			ip_start_list.append(ip)
 
 	for index, row in node_df.iterrows():
@@ -238,15 +239,10 @@ def add_topology_field(sim_csv, sim_id):
 				if diff >= 0 and diff < min_diff['delta']:
 					min_diff['delta'] = diff
 					min_diff['row'] = row2
-
-		print min_diff['row']['@timestamp']
 		for column in ip_column_list:
 			ip = min_diff['row'][column]
-			if 'nan' not in ip:
+			if 'nan' not in str(ip):
 				ip_current_list.append(ip)
-
-		print ip_start_list
-		print ip_current_list
 
 		if set(ip_start_list) == set(ip_current_list):
 			node_df.set_value(index, 'Modified Hosts', False)
@@ -298,13 +294,13 @@ def time_sync_topo(sim_csv, sim_id):
 	columns_list_topo = df_topo.columns.values.tolist()
 
 	for index, row in df_topo.iterrows():
-		node_datetime = datetimefy(str(row['@timestamp']))
+		topo_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
 
 		df2_state = df_state[['@timestamp', 'err.err_type', 'action']]
 		for index2, row2 in df2_state.iterrows():
-			state_datetime = datetimefy(str(row['@timestamp']))
-			diff = (node_datetime - state_datetime).total_seconds()
+			state_datetime = datetimefy(str(row2['@timestamp']))
+			diff = (topo_datetime - state_datetime).total_seconds()
 
 			if diff >= 0 and diff < min_diff['delta']:
 				min_diff['delta'] = diff
@@ -477,10 +473,12 @@ def packets_delta_buffer(sim_csv, sim_id):
 	buffer_df["received_delta"] = '0'
 
 	for index, row in buffer_df.iterrows():
+		# Getting the timestamp of the current row (switch)
 		end_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'row': 'sample', 'delta': sys.maxint }
+		# Getting the rows from the same switch
 		df = buffer_df.ix[buffer_df.id == str(row['id'])]
-
+		# Iterating over them, and selecting the previous entrance 
 		for index2, row2 in df.iterrows():
 			origin_datetime = datetimefy(str(row2['@timestamp']))
 			diff = (end_datetime - origin_datetime).total_seconds()
@@ -488,6 +486,7 @@ def packets_delta_buffer(sim_csv, sim_id):
 				min_diff['row'] = row2
 				min_diff['delta'] = diff
 		del df
+		# Comparating the current row and the previous entrance
 		if str(min_diff['row']) == 'sample':
 			buffer_df.set_value(index, 'transmitted_delta', 'First')
 			buffer_df.set_value(index, 'received_delta', 'First')
@@ -507,40 +506,63 @@ def packets_average(sim_csv, sim_id, window_time = 30):
 	buffer_df1 = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	df1["transmitted_average"] = '0'
 	df1["received_average"] = '0'
+	df1["transmitted_deviation"] = '0'
+	df1["received_deviation"] = '0'
 
+	packets_list = ([],[]) # Hey, look, an owl in a python!
 	transmitted_packets_count = 0
 	received_packets_count = 0
 	count = 0
 
+	# Iterating over the list of nodes
 	for index, row in df1.iterrows():
+		# Getting the timestamp of the current row (switch)
 		orig_time = datetimefy(str(row['@timestamp']))
+		# Getting the rows of the same switch and storing them in ad hoc dataframes
 		row_id_df = df1.ix[df1.id == str(row['id'])]
 		row_id_bufferdf = buffer_df1.ix[buffer_df1.id == str(row['id'])]
+		# Getting all the received and transmitted deltas of previous entrances of the 
+		# same switch, and storing them in packets_list
 		for index2, row2 in row_id_df.iterrows():
 			time = datetimefy(str(row2['@timestamp']))
-			if (0 < (orig_time-time).total_seconds() < window_time/2) or (0 < (time-orig_time).total_seconds() < window_time/2):
-				if row2['transmitted_delta'] == 'First':
-					count += 1
-					transmitted_packets_count += int(row2['packets_transmitted'])
-					received_packets_count += int(row2['packets_received'])
-				else:
-					count += 1
-					transmitted_packets_count += int(row2['transmitted_delta'])
-					received_packets_count += int(row2['received_delta'])
-		for index2, row2 in row_id_bufferdf.iterrows():
-			time = datetimefy(str(row2['@timestamp']))
-			if (0 < (orig_time-time).total_seconds() < window_time/2) or (0 < (time-orig_time).total_seconds() < window_time/2):
+			if 0 <= (orig_time-time).total_seconds() < window_time:
 				if row2['transmitted_delta'] != 'First':
 					count += 1
 					transmitted_packets_count += int(row2['transmitted_delta'])
 					received_packets_count += int(row2['received_delta'])
-
-		df1.set_value(index, 'transmitted_average', str(transmitted_packets_count/count))
-		df1.set_value(index, 'received_average', str(received_packets_count/count))
+					packets_list[0].append(int(row2['transmitted_delta']))
+					packets_list[1].append(int(row2['received_delta']))
+		for index2, row2 in row_id_bufferdf.iterrows():
+			time = datetimefy(str(row2['@timestamp']))
+			if 0 <= (orig_time-time).total_seconds() < window_time:
+				if row2['transmitted_delta'] != 'First':
+					count += 1
+					transmitted_packets_count += int(row2['transmitted_delta'])
+					received_packets_count += int(row2['received_delta'])
+					packets_list[0].append(int(row2['transmitted_delta']))
+					packets_list[1].append(int(row2['received_delta']))
+		# If there isn't any previous entrances of this switch
+		if count == 0:
+			df1.set_value(index, 'transmitted_average', 'First')
+			df1.set_value(index, 'received_average', 'First')
+			df1.set_value(index, 'transmitted_deviation', 'First')
+			df1.set_value(index, 'received_deviation', 'First')
+		else:
+			# Processing averages and standard deviations
+			transmitted_average = transmitted_packets_count/count
+			received_average = received_packets_count/count
+			df1.set_value(index, 'transmitted_average', str(transmitted_average))
+			df1.set_value(index, 'received_average', str(received_average))
+			for i in range(len(packets_list[0])):
+				packets_list[0][i] = (packets_list[0][i] - transmitted_average) ** 2
+				packets_list[1][i] = (packets_list[1][i] - received_average) ** 2
+			df1.set_value(index, 'transmitted_deviation', str(math.sqrt(sum(packets_list[0])/count)))
+			df1.set_value(index, 'received_deviation', str(math.sqrt(sum(packets_list[1])/count)))
 
 		transmitted_packets_count = 0
 		received_packets_count = 0
 		count = 0
+		packets_list = ([],[]) 
 
 	df1.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df1
@@ -553,7 +575,6 @@ def modified_output_columns(sim_csv, sim_id):
 	columns_list = df3.columns.values.tolist()
 
 	df3["changed_output"] = "sample"
-
 	flows_and_actions = {}
 
 	flow_columns_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and 'idle' not in s ]
@@ -626,7 +647,7 @@ def final_trimmer(sim_csv, sim_id):
 	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
 	columns_list = df.columns.values.tolist()
 	number_of_columns = len(columns_list)
-	for i in range(0, number_of_columns - 13):
+	for i in range(0, number_of_columns - 18):
 		if columns_list[i] != 'id' and columns_list[i] != '@timestamp':
 			df.drop(columns_list[i], axis=1, inplace=True)
 	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
@@ -677,11 +698,11 @@ if __name__ == '__main__':
 				print "Trimming..."
 				general_trimmer(csv, sim_index)
 				print "Time syncing..."
-				#time_sync_node(csv, sim_index)
+				time_sync_node(csv, sim_index)
 				print "Checking in-ports..."
-				#modified_port_columns(csv, sim_index)
+				modified_port_columns(csv, sim_index)
 				print "Checking output-node-connectors..."
-				#modified_output_columns(csv, sim_index)
+				modified_output_columns(csv, sim_index)
 				print "Checking packets count..."
 				packets_delta(csv, sim_index)
 				packets_delta_buffer(csv, sim_index)
