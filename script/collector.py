@@ -4,7 +4,7 @@ from subprocess import 	PIPE
 from os import chmod
 from time import sleep
 import stat
-import csv_trimmer
+import trimmer
 
 def get_indices(es_url):
 
@@ -34,7 +34,6 @@ def get_indices(es_url):
 	for words in array_response[:]:
 		if words.find("simulation") == -1:
 			array_response.remove(words)
-
 	return array_response
 
 if __name__ == '__main__':
@@ -56,5 +55,5 @@ if __name__ == '__main__':
 		c = Popen(["es2csv", "-u", "http://"+str(es_url), "-r", "-q", "@./query_topo.json", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"], stdout=PIPE)
 		c.communicate()
 
-		#csv_trimmer.start(window_time)
+		#trimmer.start(window_time)
 
