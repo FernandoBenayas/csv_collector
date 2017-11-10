@@ -545,6 +545,7 @@ def packets_average(sim_csv, sim_id, window_time = 30):
 	df1["received_deviation"] = '0'
 
 	packets_list = ([],[]) # Hey, look, an owl in a python!
+	deviation_list = ([],[]) #Look, another one
 	transmitted_packets_count = 0
 	received_packets_count = 0
 	count = 0
@@ -561,7 +562,7 @@ def packets_average(sim_csv, sim_id, window_time = 30):
 		row_id_bufferdf = buffer_df1.ix[buffer_df1.id == str(row['id'])]
 		# Getting all the received and transmitted deltas of previous entrances of the 
 		# same switch, and storing them in packets_list
-		for index2, row2 in row_id_df.iterrows():
+		for index2, row2 in row_id_df[columns_list].iterrows():
 			time = datetimefy(str(row2['@timestamp']))
 			if 0 <= (orig_time-time).total_seconds() < window_time:
 				if row2['transmitted_delta'] != 'First':
@@ -592,15 +593,16 @@ def packets_average(sim_csv, sim_id, window_time = 30):
 			df1.set_value(index, 'transmitted_average', str(transmitted_average))
 			df1.set_value(index, 'received_average', str(received_average))
 			for i in range(len(packets_list[0])):
-				packets_list[0][i] = (packets_list[0][i] - transmitted_average) ** 2
-				packets_list[1][i] = (packets_list[1][i] - received_average) ** 2
-			df1.set_value(index, 'transmitted_deviation', str(math.sqrt(sum(packets_list[0])/count)))
-			df1.set_value(index, 'received_deviation', str(math.sqrt(sum(packets_list[1])/count)))
+				deviation_list[0].append((packets_list[0][i] - transmitted_average) ** 2)
+				deviation_list[1].append((packets_list[1][i] - received_average) ** 2)
+			df1.set_value(index, 'transmitted_deviation', str(math.sqrt(sum(deviation_list[0])/count)))
+			df1.set_value(index, 'received_deviation', str(math.sqrt(sum(deviation_list[1])/count)))
 
 		transmitted_packets_count = 0
 		received_packets_count = 0
 		count = 0
-		packets_list = ([],[]) 
+		packets_list = ([],[])
+		deviation_list = ([],[])
 
 	df1.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df1
@@ -743,11 +745,14 @@ if __name__ == '__main__':
 				modified_port_columns(csv, sim_index)
 				print "Checking output-node-connectors..."
 				modified_output_columns(csv, sim_index)
+				# Traffic errors not supported for the time being
+				'''
 				print "Checking packets count..."
 				packets_delta(csv, sim_index)
 				packets_delta_buffer(csv, sim_index)
 				print "Processing packet average..."
 				packets_average(csv, sim_index)
+				'''
 				print "Adding topology field..."
 				add_topology_field(csv, sim_index)
 				print "Final trimming..."
