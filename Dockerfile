@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && pip install es2csv \
  && pip install numpy \
  && pip install pandas \
- && chmod +x entrypoint.sh /root/script/csv_collector.py \
+ && chmod +x entrypoint.sh /root/script/* \
  && chmod a+r /root/script/config
 
 ENTRYPOINT ["/entrypoint.sh"]
