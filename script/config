@@ -1,3 +1,4 @@
 [main]
 elasticsearch_url = elasticsearch:9200
 time_window = 30
+training = True

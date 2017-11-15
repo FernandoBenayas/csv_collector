@@ -1,10 +1,12 @@
 import pandas as pd
+import ConfigParser
 import datetime as dt
 import os
 import glob
 import sys
 import ConfigParser
 import math
+
 
 def datetimefy(timestamp):
 
@@ -50,6 +52,8 @@ def limit_size(sim_list, sim_id):
 		print 'Splitting csv...'
 		shards = []
 		number_of_splits = int(csv_length / 5000)
+		if csv_length == 5000:
+			number_of_splits = 0
 		for i in range(number_of_splits+1):
 			new_df = df[5000*i:5000*(i+1)]
 			buffer_df = create_buffer(df, new_df, size, i, timewindow)
@@ -147,7 +151,7 @@ def general_trimmer(sim_csv, sim_id):
 
 	for index, row in df[h_timeout_list].iterrows():
 		for column in h_timeout_list:
-			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) < 15:
+			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) != 300:
 				df.set_value(index, "modified_h_timeout", True)
 				break
 			else:
@@ -160,7 +164,7 @@ def general_trimmer(sim_csv, sim_id):
 
 	for index, row in df[i_timeout_list].iterrows():
 		for column in i_timeout_list:
-			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) < 15:
+			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) <= 15:
 				df.set_value(index, "modified_i_timeout", True)
 				break
 			else:
@@ -226,7 +230,7 @@ def add_topology_field(sim_csv, sim_id):
 	ip_column_list = [s for s in columns_list if 'ip' in s]
 	ip_start_list = []
 	ip_current_list = []
-	node_df['Modified Hosts'] = False
+	node_df['modified_hosts'] = False
 
 	# Capturing the first report of hosts in the network
 	# and inserting int in ip_start_list
@@ -250,15 +254,17 @@ def add_topology_field(sim_csv, sim_id):
 				if diff >= 0 and diff < min_diff['delta']:
 					min_diff['delta'] = diff
 					min_diff['row'] = row2
+		if isinstance(min_diff['row'], basestring):
+			node_df.set_value(index, 'modified_hosts', 'First')
+			continue
 		for column in ip_column_list:
 			ip = min_diff['row'][column]
 			if 'nan' not in str(ip):
 				ip_current_list.append(ip)
-
 		if set(ip_start_list) == set(ip_current_list):
-			node_df.set_value(index, 'Modified Hosts', False)
+			node_df.set_value(index, 'modified_hosts', False)
 		else:
-			node_df.set_value(index, 'Modified Hosts', True)
+			node_df.set_value(index, 'modified_hosts', True)
 		ip_current_list = []
 
 	node_df.to_csv(sim_csv.replace('_node', '_modified_node'), index=False)
@@ -333,12 +339,16 @@ def time_sync_topo(sim_csv, sim_id):
 	return
 
 # Checks if the in-port fields in the match rules were modified
-def modified_port_columns(sim_csv, sim_id):
+def modified_inport_columns(sim_csv, sim_id):
 
 	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
 	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	columns_list = df3.columns.values.tolist()
 	df3["changed_inport"] = "sample"
+	# Even when no changes have been made, after a change we keep
+	# marking the field as 'True' until a fix happens. This is
+	# done using keep_true_bit.
+	keep_true_bit = 0
 
 	# Looking for the number of flows in the csv
 	flow_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' in s]
@@ -359,7 +369,6 @@ def modified_port_columns(sim_csv, sim_id):
 			try:
 				in_port = str(row['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'])
 				in_port_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
-				break
 			except KeyError as err:
 				print 'Ignoring flow: %s' % err
 
@@ -397,14 +406,23 @@ def modified_port_columns(sim_csv, sim_id):
 				try:
 					in_port = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'])
 					#DEBUGGING : row or row2?
-					in_port_dictionary_b[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
+					in_port_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
 				except KeyError as err:
 					print "Ignoring flow: %s" % err
 			for key in in_port_dictionary:
-				if in_port_dictionary[key] != in_port_dictionary_b[key]:
-					df3.set_value(index, 'changed_inport', 'True')
-				else:
-					df3.set_value(index, 'changed_inport', 'False')
+				try:
+					if in_port_dictionary[key] != in_port_dictionary_b[key]:
+						df3.set_value(index, 'changed_inport', 'True')
+						keep_true_bit = keep_true_bit ^ 1
+						break
+					else:
+						if keep_true_bit == 1:
+							df3.set_value(index, 'changed_inport', 'True')
+						else:
+							df3.set_value(index, 'changed_inport', 'False')
+				except KeyError as err:
+					print '		Flow unpaired: %s' % key
+					continue
 	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df3
 	del df4
@@ -614,6 +632,10 @@ def modified_output_columns(sim_csv, sim_id):
 	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
 	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
 	columns_list = df3.columns.values.tolist()
+	# Even when no changes have been made, after a change we keep
+	# marking the field as 'True' until a fix happens. This is
+	# done using keep_true_bit.
+	keep_true_bit = 0
 
 	df3["changed_output"] = "sample"
 	flows_and_actions = {}
@@ -623,7 +645,8 @@ def modified_output_columns(sim_csv, sim_id):
 		flow_id = int(column.split('.')[3])
 		action_list = [s for s in columns_list if 'flow-node-inventory:table.68.flow.' + str(flow_id) in s and 'output-action.output-node-connector' in s]
 		flows_and_actions[flow_id] = len(action_list)
-
+	# DEBUGGING
+	# Limit this df3!!!
 	for index, row in df3.iterrows():
 		print '		Checking output node connectors: processing row %s' % index
 		out_conn_dictionary = {}
@@ -671,12 +694,15 @@ def modified_output_columns(sim_csv, sim_id):
 						break
 					except KeyError as err:
 						print 'Ignoring flow: %s' % err
-
 			for key in out_conn_dictionary:
 				if out_conn_dictionary[key] != out_conn_dictionary_b[key]:
 					df3.set_value(index, 'changed_output', 'True')
+					keep_true_bit = keep_true_bit ^ 1
 				else:
-					df3.set_value(index, 'changed_output', 'False')
+					if keep_true_bit == 1:
+						df3.set_value(index, 'changed_output', 'True')
+					else:
+						df3.set_value(index, 'changed_output', 'False')
 
 	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df3
@@ -684,14 +710,27 @@ def modified_output_columns(sim_csv, sim_id):
 	del df4buffer
 	return
 
-def final_trimmer(sim_csv, sim_id):
+def final_trimmer(sim_csv, sim_id, training_dataset = 'False'):
 
 	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+	df['err_type'] = df.err_type.astype(str)
 	columns_list = df.columns.values.tolist()
 	number_of_columns = len(columns_list)
-	for i in range(0, number_of_columns - 18):
-		if columns_list[i] != 'id' and columns_list[i] != '@timestamp':
-			df.drop(columns_list[i], axis=1, inplace=True)
+
+	if training_dataset == 'True':
+		for index, row, in df[['id']].iterrows():
+			if row['id'] != 'openflow2':
+				df.drop(index, inplace=True)
+
+	for i in range(0, number_of_columns - 10):
+		if columns_list[i] == 'id' or columns_list[i] == '@timestamp':
+			#df.drop(columns_list[i], axis=1, inplace=True)
+			continue
+		df.drop(columns_list[i], axis=1, inplace=True)
+	for index, row, in df[['action', 'err_type']].iterrows():
+		if row['action'] == 'fix' or row['err_type'] == '-':
+			df.set_value(index, 'err_type', 'ok')
+	df.drop('action', axis=1, inplace=True)
 	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
 	del df
 	return
@@ -703,7 +742,7 @@ def join_shards(csv_shards, sim_id, csv_type):
 		df1 = pd.read_csv(str(csv_shards[i]).replace(str(csv_type), 'modified_'+str(csv_type)))		
 		df2 = pd.read_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)))
 		df = pd.concat([df1, df2])
-		df.to_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)))
+		df.to_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)), index=False)
 		last_csv = str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type))
 	os.rename(str(last_csv), '/root/csv/'+sim_id+'_modified_'+str(csv_type)+'.csv')
 	del df
@@ -713,6 +752,10 @@ def join_shards(csv_shards, sim_id, csv_type):
 
 #CHANGE TO START
 if __name__ == '__main__':
+
+	config = ConfigParser.ConfigParser()
+	config.readfp(open('config', 'r'))
+	training = str(config.get('main', 'training'))
 
 	os.chdir('/root/csv')
 	csv_dict = {}
@@ -742,7 +785,7 @@ if __name__ == '__main__':
 				print "Time syncing..."
 				time_sync_node(csv, sim_index)
 				print "Checking in-ports..."
-				modified_port_columns(csv, sim_index)
+				modified_inport_columns(csv, sim_index)
 				print "Checking output-node-connectors..."
 				modified_output_columns(csv, sim_index)
 				# Traffic errors not supported for the time being
@@ -756,7 +799,7 @@ if __name__ == '__main__':
 				print "Adding topology field..."
 				add_topology_field(csv, sim_index)
 				print "Final trimming..."
-				final_trimmer(csv, sim_index)
+				final_trimmer(csv, sim_index, training_dataset=training)
 			if len(value) > 1:
 				print 'Joining node shards...'
 				join_shards(value, sim_index, 'node')
