@@ -698,6 +698,7 @@ def modified_output_columns(sim_csv, sim_id):
 				if out_conn_dictionary[key] != out_conn_dictionary_b[key]:
 					df3.set_value(index, 'changed_output', 'True')
 					keep_true_bit = keep_true_bit ^ 1
+					break
 				else:
 					if keep_true_bit == 1:
 						df3.set_value(index, 'changed_output', 'True')
