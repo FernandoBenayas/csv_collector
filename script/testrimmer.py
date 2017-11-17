@@ -518,6 +518,9 @@ def modified_output_columns(sim_csv, sim_id):
 	del buffer_df
 	return
 
+def priorities(sim_csv, sim_id):
+	return
+
 def final_trimmer(sim_csv, sim_id, training_dataset = 'False'):
 
 	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
@@ -597,6 +600,8 @@ if __name__ == '__main__':
 				modified_inport_columns(csv, sim_index)
 				print "Checking output-node-connectors..."
 				modified_output_columns(csv, sim_index)
+				print "Checking priorities..."
+				priorities(csv, sim_index)
 				print "Adding topology field..."
 				add_topology_field(csv, sim_index)
 				print "Final trimming..."
