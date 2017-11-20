@@ -412,7 +412,6 @@ def modified_inport_columns(sim_csv, sim_id):
 				print 'Ignoring flow: %s' % err
 
 		past_report = str(row['index_nearest'])
-
 		# Once we have the closest entry (if there is one), we create a 'b' dictionary,
 		# insert in it the flow : list-of-inports of that entry, and compare dictionaries
 		if past_report == 'First':
@@ -488,7 +487,7 @@ def priorities(sim_csv, sim_id):
 				try:
 					if priority_dictionary[key] != priority_dictionary_b[key]:
 						df.at[index, 'changed_priority'] = 'True'
-						#keep_true_bit = keep_true_bit ^ 1
+						keep_true_bit = keep_true_bit ^ 1
 						break
 					else:
 						if keep_true_bit == 1:
@@ -498,6 +497,9 @@ def priorities(sim_csv, sim_id):
 				except KeyError as err:
 					print '		Flow unpaired: %s' % key
 					continue
+	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
+	del df
+	del buffer_df
 	return
 
 # Checks if the 'output-node-connector' field in each flow has been modified
@@ -576,9 +578,8 @@ def final_trimmer(sim_csv, sim_id, training_dataset = 'False'):
 			if row['id'] != 'openflow2':
 				df.drop(index, inplace=True)
 
-	for i in range(0, len(node_columns_list) - 12):
-		print i
-		if node_columns_list[i] == 'id' or node_columns_list[i] == '@timestamp':
+	for i in range(0, len(node_columns_list) - 15):
+		if node_columns_list[i] == 'id' or node_columns_list[i] == '@timestamp' or node_columns_list[i] == 'changed_priority':
 			continue
 		df.drop(node_columns_list[i], axis=1, inplace=True)
 
