@@ -6,6 +6,9 @@ import glob
 import sys
 import ConfigParser
 import math
+from datachunks import DataChunks
+from nodedatachunks import NodeDataChunks
+from topodatachunks import TopoDataChunks
 
 def datetimefy(timestamp):
 
@@ -18,79 +21,11 @@ def datetimefy(timestamp):
 
  	return dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
 
-def limit_size(sim_list, sim_id):
-
-	#Dictionary of node csvs; each key will be the original node csv, and each value will be 
-	#a list of the files in which the original csv has been splitted
-	nodes_dict = {}
-	#Same for topo csvs dictionary
-	topo_dict = {}
-	#Time window for packet average 
-	os.chdir('/root/script')
-	config = ConfigParser.ConfigParser()
-	config.readfp(open('config', 'r'))
-	timewindow = dt.timedelta(seconds=int(config.get('main', 'time_window'))).total_seconds()
-
-	for csv in sim_list:
-		df = pd.read_csv(str(csv))
-
-		#Searching for the size of the simulation
-		if 'node' in csv:
-			df_size = df[["id"]]
-			size = 0
-			for row in df_size.iterrows():
-				of_number = int(row[1][0].split("w")[1])
-				if of_number > size:
-					size = of_number
-			del df_size
-
-		#Splitting into 5000 rows dataframes
-		csv_length = df.shape[0]
-		print 'Number of rows: %s' % csv_length
-		print 'Splitting csv...'
-		shards = []
-		number_of_splits = int(csv_length / 5000)
-		if csv_length == 5000:
-			number_of_splits = 0
-		for i in range(number_of_splits+1):
-			new_df = df[5000*i:5000*(i+1)]
-			buffer_df = create_buffer(df, new_df, size, i, timewindow)
-			csv_name = str(csv).replace('.csv', '_'+str(i)+'.csv').replace('/csv', '/csv/shards')
-			csv_buffer = str(csv).replace('.csv', '_'+str(i)+'_buffer'+'.csv').replace('/csv', '/csv/shards')
-			shards.append(csv_name)
-			new_df.to_csv(csv_name)
-			buffer_df.to_csv(csv_buffer)
-		if 'node' in csv:
-			nodes_dict[str(csv)] = shards
-		elif 'topo' in csv:
-			topo_dict[str(csv)] = shards
-			del new_df
-			del buffer_df
-
-		#Releasing memory
-		del df
-	return (nodes_dict, topo_dict, size)
-
-def create_buffer(dataframe, new_df, size, index_df, timewindow):
-	if index_df == 0:
-		return dataframe[-size:0]
-
-	first_entry_time = datetimefy(new_df.iloc[0]['@timestamp'])
-	comparate_time = datetimefy(dataframe.iloc[5000*index_df-size]['@timestamp'])
-	j = 1
-	while (first_entry_time - comparate_time).total_seconds() < timewindow:
-		j += 1
-		comparate_time = datetimefy(dataframe.iloc[5000*index_df-size*j]['@timestamp'])
-	buffer_dataframe = dataframe[5000*index_df-size*(j+1):5000*index_df]
-
-	return buffer_dataframe
-
-def general_trimmer(sim_csv, sim_id):
-	df = pd.read_csv(str(sim_csv))
+def general_trimmer(df, df_buffer):
 
 	#Dropping useless data DEBUGGING: COULD USE ALL()? TOO TIME-CONSUMING
 	print 'Dropping useless columns'
-	global node_columns_list
+
 	node_columns_list = df.columns.values.tolist()
 	for column in node_columns_list:
 		if 'flow-node-inventory:table' in column and 'flow-node-inventory:table.68' not in column:
@@ -204,41 +139,34 @@ def general_trimmer(sim_csv, sim_id):
 
 	df['err_type'] = "sample"
 	df['action'] = "sample"
-	df.to_csv(sim_csv.replace('_node', '_modified_node'))
-	del df
 	return
 
-def topology_csv_trimmer(sim_csv, sim_id):
+def topology_csv_trimmer(df, df_buffer):
 
-	df2 = pd.read_csv(str(sim_csv), engine='python')
 	print 'Selecting ip columns in topology csv'
-	columns_list = df2.columns.values.tolist()
+	columns_list = df.columns.values.tolist()
 
 	for column in columns_list:
 		if not all(x in str(column) for x in ['host-tracker-service:addresses.', '.ip']) and '@timestamp' not in column:
-			df2.drop(column, axis=1, inplace=True)
-	df2['err_type'] = "sample"
-	df2['action'] = "sample"
-	df2.to_csv(sim_csv.replace('_topology', '_modified_topo'))
-
-	del df2
+			df.drop(column, axis=1, inplace=True)
+	df['err_type'] = "sample"
+	df['action'] = "sample"
 	return
 
 # Adds a field containing the index of the nearest entry of the same
 # switch at the node csv
-def add_nearest(sim_csv, sim_id):
+def add_nearest(df, df_buffer):
 
-	df_node = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
-	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
-	df_node['index_nearest'] = 'sample'
-	df_node['is_buffer'] = 'False'
+	df['index_nearest'] = 'sample'
+	df['is_buffer'] = 'False'
 	
-	for index, row in df_node[['id', '@timestamp']].iterrows():
+	for index, row in df[['id', '@timestamp']].iterrows():
+		print '		Adding nearest field: row %s' % index
 		origin_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'index': 'First', 'delta': dt.timedelta.max.total_seconds()}
 		is_buffer = False
-		df_trimmed = df_node.ix[df_node.id == str(row['id'])]
-		buffer_trimmed = buffer_df.ix[buffer_df.id == str(row['id'])]
+		df_trimmed = df.ix[df.id == str(row['id'])]
+		buffer_trimmed = df_buffer.ix[df_buffer.id == str(row['id'])]
 		# Checking for the closest entry of the same switch in the
 		# current dataframe and the buffer
 		for index2, row2 in df_trimmed.loc[0:index].iterrows():
@@ -254,35 +182,27 @@ def add_nearest(sim_csv, sim_id):
 				min_diff['index'] = str(index_buffer)
 				min_diff['delta'] = diff
 				is_buffer = True
-		df_node.at[index, 'index_nearest'] = min_diff['index']
-		df_node.at[index, 'is_buffer'] = str(is_buffer)
+		df.at[index, 'index_nearest'] = min_diff['index']
+		df.at[index, 'is_buffer'] = str(is_buffer)
 
-	df_node.to_csv(sim_csv.replace('_node', '_modified_node'), index=False)
 	return
 
 # Adds a field in the topology csv that indicates
 # if there are hosts missing
-def add_topology_field(sim_csv, sim_id):
+def add_topology_field(df_node, topo_data):
 
-	# Getting all the 'modified_topo' shards
-	os.chdir('/root/csv/shards')
-	topo_list = []
-	for file in glob.glob('*_modified_topo*'):
-		topo_list.append(file)
-
-	first_df = pd.read_csv(str(topo_list[0]))
-	node_df = pd.read_csv(str(sim_csv.replace('_node', '_modified_node')))
-	columns_list = first_df.columns.values.tolist()
+	first_topo_df = topo_data.shards[0]
+	columns_list = first_topo_df.columns.values.tolist()
 
 	ip_column_list = [s for s in columns_list if 'ip' in s]
 	ip_start_list = []
 	ip_current_list = []
-	node_df['modified_hosts'] = False
+	df_node['modified_hosts'] = 'sample'
 
 	# Capturing the first report of hosts in the network
 	# and inserting int in ip_start_list
 	for column in ip_column_list:
-		ip = first_df.iloc[0][column]
+		ip = first_topo_df.iloc[0][column]
 		if 'nan' not in str(ip):
 			ip_start_list.append(ip)
 
@@ -290,118 +210,108 @@ def add_topology_field(sim_csv, sim_id):
 	# topology report in all the topology shards, and compare it with the 'start' 
 	# report on the topology (when no errors where started), to see if something
 	# is missing
-	for index, row in node_df[['@timestamp']].iterrows():
+	for index, row in df_node[['@timestamp']].iterrows():
+		print '		Adding modified hosts field: row %s' % index
 		node_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'row': 'sample', 'delta': dt.timedelta.max.total_seconds()}
-		for topo_csv in topo_list:
-			df = pd.read_csv(str(topo_csv))
-			for index2, row2 in df.iterrows():
-				topo_datetime = datetimefy(str(row2['@timestamp']))
+		for index2, df_topo in enumerate(topo_data.shards):
+			for index3, row3 in df_topo.iterrows():
+				topo_datetime = datetimefy(str(row3['@timestamp']))
 				diff = (node_datetime - topo_datetime).total_seconds()
 				if diff >= 0 and diff < min_diff['delta']:
 					min_diff['delta'] = diff
-					min_diff['row'] = row2
-
+					min_diff['row'] = row3
+				elif diff < 0:
+					break
 		if isinstance(min_diff['row'], basestring):
-			node_df.at[index, 'modified_hosts'] = 'First'
+			df_node.at[index, 'modified_hosts'] = 'First'
 			continue
 		for column in ip_column_list:
 			ip = min_diff['row'][column]
 			if 'nan' not in str(ip):
 				ip_current_list.append(ip)
 		if set(ip_start_list) == set(ip_current_list):
-			node_df.at[index, 'modified_hosts'] = False
+			df_node.at[index, 'modified_hosts'] = 'False'
 		else:
-			node_df.at[index, 'modified_hosts'] = True
+			df_node.at[index, 'modified_hosts'] = 'True'
 		ip_current_list = []
 
-	node_df.to_csv(sim_csv.replace('_node', '_modified_node'), index=False)
 	return
 
 # We look for the closest network report (simstate message) and assign
 # its state to the correspondent row in the node csv
-def time_sync_node(sim_csv, sim_id):
-
-	df_state = pd.read_csv('/root/csv/' + sim_id + '_simstate.csv')
-	df_node = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
+def time_sync_node(df_node, df_state_list):
 
 	for index, row in df_node[['@timestamp']].iterrows():
 		print '		Syncing node: processing row %s' % index
 		node_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
 
-		df2_state = df_state[['@timestamp', 'err.err_type', 'action']]
-		for index2, row2 in df2_state.iterrows():
-			state_datetime = datetimefy(str(row2['@timestamp']))
-			diff = (node_datetime - state_datetime).total_seconds()
+		for df_state in df_state_list:
+			for index2, row2 in df_state[['@timestamp', 'err.err_type', 'action']].iterrows():
+				state_datetime = datetimefy(str(row2['@timestamp']))
+				diff = (node_datetime - state_datetime).total_seconds()
 
-			if diff >= 0 and diff < min_diff['delta']:
-				min_diff['delta'] = diff
-				if "start" in str(row2['action']):
-					min_diff['err'] = '-'
-				else:
-					min_diff['err'] = str(row2['err.err_type'])
-				min_diff['action'] = str(row2['action'])
+				if diff >= 0 and diff < min_diff['delta']:
+					min_diff['delta'] = diff
+					if "start" in str(row2['action']):
+						min_diff['err'] = '-'
+					else:
+						min_diff['err'] = str(row2['err.err_type'])
+					min_diff['action'] = str(row2['action'])
+
+				elif diff < 0:
+					break
+
 
 		df_node.at[index, 'err_type'] = str(min_diff['err'])
 		df_node.at[index, 'action'] = str(min_diff['action'])
 
-	df_node.to_csv(sim_csv.replace('_node', '_modified_node'), index=False)
-	del df_node
-	del df_state
-	del df2_state
 	return
 
 # Same for the topo csv
-def time_sync_topo(sim_csv, sim_id):
-
-	df_state = pd.read_csv('/root/csv/' + sim_id + '_simstate.csv')
-	df_topo = pd.read_csv(str(sim_csv.replace('_topology', '_modified_topo')))
+def time_sync_topo(df_topo, df_state_list):
 
 	for index, row in df_topo[['@timestamp']].iterrows():
 		print '		Syncing topo: processing row %s' % index
 		topo_datetime = datetimefy(str(row['@timestamp']))
 		min_diff = {'err': '', 'delta': dt.timedelta.max.total_seconds(), 'action': ''}
 
-		df2_state = df_state[['@timestamp', 'err.err_type', 'action']]
-		for index2, row2 in df2_state.iterrows():
-			state_datetime = datetimefy(str(row2['@timestamp']))
-			diff = (topo_datetime - state_datetime).total_seconds()
+		for df_state in df_state_list:
+			for index2, row2 in df_state[['@timestamp', 'err.err_type', 'action']].iterrows():
+				state_datetime = datetimefy(str(row2['@timestamp']))
+				diff = (topo_datetime - state_datetime).total_seconds()
 
-			if diff >= 0 and diff < min_diff['delta']:
-				min_diff['delta'] = diff
-				if "start" in str(row2['action']):
-					min_diff['err'] = '-'
-				else:
-					min_diff['err'] = str(row2['err.err_type'])
-				min_diff['action'] = str(row2['action'])
+				if diff >= 0 and diff < min_diff['delta']:
+					min_diff['delta'] = diff
+					if "start" in str(row2['action']):
+						min_diff['err'] = '-'
+					else:
+						min_diff['err'] = str(row2['err.err_type'])
+					min_diff['action'] = str(row2['action'])
+
+				elif diff < 0:
+					break
 
 		df_topo.at[index, 'err_type'] = str(min_diff['err'])
 		df_topo.at[index, 'action'] = str(min_diff['action'])
 
-	df_topo.to_csv(sim_csv.replace('_topology', '_modified_topo'), index=False)
-	del df_topo
-	del df_state
-	del df2_state
 	return
 
 # Checks if the in-port fields in the match rules were modified
-def modified_inport_columns(sim_csv, sim_id):
-	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
-	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
+def modified_inport_columns(df, df_buffer):
+
+	node_columns_list = df.columns.values.tolist()
 	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s]
-	df3["changed_inport"] = "sample"
-	# Even when no changes have been made, after a change we keep
-	# marking the field as 'True' until a fix happens. This is
-	# done using keep_true_bit.
-	keep_true_bit = 0
+	df["changed_inport"] = "sample"
 
 	# For each row (switch), we create a {flow : list-of-inports} dictionary. Then, we look
 	# for the closest previous entry of that switch, create another dictionary, and compare
 	# them
 	buffer_flow_list = flow_list[:]
 	flow_list.extend(['@timestamp', 'id', 'index_nearest', 'is_buffer'])
-	for index, row in df3[flow_list].iterrows():
+
+	for index, row in df[flow_list].iterrows():
 		print '		Checking in-ports: processing row %s' % index
 		in_port_dictionary = {}
 		for i in range(NODE_NUMBER_OF_FLOWS + 1):
@@ -410,52 +320,45 @@ def modified_inport_columns(sim_csv, sim_id):
 				in_port_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
 			except KeyError as err:
 				print 'Ignoring flow: %s' % err
+				break
 
 		past_report = str(row['index_nearest'])
 		# Once we have the closest entry (if there is one), we create a 'b' dictionary,
 		# insert in it the flow : list-of-inports of that entry, and compare dictionaries
 		if past_report == 'First':
-			df3.at[index, 'changed_inport'] = 'First'
+			df.at[index, 'changed_inport'] = 'First'
 		else: 
 			in_port_dictionary_b = {}
-			if row['is_buffer'] == False:
-				row2 = df3[flow_list].iloc[[int(past_report)]]
+			if row['is_buffer'] == 'False':
+				row2 = df[flow_list].loc[[int(past_report)]]
 			else:
-				row2 = buffer_df[buffer_flow_list].iloc[[int(past_report)]]
+				row2 = df_buffer[buffer_flow_list].loc[[int(past_report)]]
 			for i in range(NODE_NUMBER_OF_FLOWS + 1):
 				try:
 					in_port = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'].item())
 					in_port_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.id'].item())] = in_port
 				except KeyError as err:
 					print "Ignoring flow: %s" % err
+					break
+
 			for key in in_port_dictionary:
 				try:
 					if in_port_dictionary[key] != in_port_dictionary_b[key]:
-						df3.at[index, 'changed_inport'] = 'True'
-						#keep_true_bit = keep_true_bit ^ 1
+						df.at[index, 'changed_inport'] = 'True'
 						break
 					else:
-						if keep_true_bit == 1:
-							df3.at[index, 'changed_inport'] = 'True'
-						else:
-							df3.at[index, 'changed_inport'] = 'False'
+						df.at[index, 'changed_inport'] = 'False'
+
 				except KeyError as err:
 					print '		Flow unpaired: %s' % key
 					continue
-	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
-	del df3
-	del buffer_df
 	return
 
-def priorities(sim_csv, sim_id):
-	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
-	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
+def priorities(df, df_buffer):
+
+	node_columns_list = df.columns.values.tolist()
 	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s]
 	df['changed_priority'] = 'sample'
-	# Even when no changes have been made, after a change we keep
-	# marking the field as 'True' until a fix happens. This is
-	# done using keep_true_bit.
-	keep_true_bit = 0
 
 	buffer_flow_list = flow_list[:]
 	flow_list.extend(['index_nearest', 'is_buffer'])
@@ -468,52 +371,42 @@ def priorities(sim_csv, sim_id):
 				priority_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = priority
 			except KeyError as err:
 				print 'Ignoring flow: %s' % err
+				break
 		past_report = str(row['index_nearest'])
 		
 		if past_report == 'First':
-			df.at[index, 'changed_inport'] = 'First'
+			df.at[index, 'changed_priority'] = 'First'
 		else: 
 			priority_dictionary_b = {}
-			if row['is_buffer'] == False:
-				row2 = df[flow_list].iloc[[int(past_report)]]
+			if row['is_buffer'] == 'False':
+				row2 = df[flow_list].loc[[int(past_report)]]
 			else:
-				row2 = buffer_df[buffer_flow_list].iloc[[int(past_report)]]
+				row2 = df_buffer[buffer_flow_list].loc[[int(past_report)]]
 			for i in range(NODE_NUMBER_OF_FLOWS + 1):
 				try:
 					priority = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.priority'].item())
 					priority_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.id'].item())] = priority
 				except KeyError as err:
 					print "Ignoring flow: %s" % err
+					break
 			for key in priority_dictionary:
 				try:
 					if priority_dictionary[key] != priority_dictionary_b[key]:
 						df.at[index, 'changed_priority'] = 'True'
-						#keep_true_bit = keep_true_bit ^ 1
 						break
 					else:
-						if keep_true_bit == 1:
-							df.at[index, 'changed_priority'] = 'True'
-						else:
-							df.at[index, 'changed_priority'] = 'False'
+						df.at[index, 'changed_priority'] = 'False'
 				except KeyError as err:
 					print '		Flow unpaired: %s' % key
 					continue
-	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
-	del df
-	del buffer_df
 	return
 
 # Checks if the 'output-node-connector' field in each flow has been modified
-def modified_output_columns(sim_csv, sim_id):
-	df3 = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
-	buffer_df = pd.read_csv(str(sim_csv).replace('.csv', '_buffer.csv'))
-	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s]
-	# Even when no changes have been made, after a change we keep
-	# marking the field as 'True' until a fix happens. This is
-	# done using keep_true_bit.
-	keep_true_bit = 0
+def modified_output_columns(df, df_buffer):
 
-	df3["changed_output"] = "sample"
+	node_columns_list = df.columns.values.tolist()
+	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s]
+	df["changed_output"] = "sample"
 	flows_and_actions = {}
 
 	flow_columns_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and 'idle' not in s ]
@@ -523,7 +416,7 @@ def modified_output_columns(sim_csv, sim_id):
 		flows_and_actions[flow_id] = len(action_list)
 
 	flow_list.extend(['index_nearest', 'is_buffer'])
-	for index, row in df3[flow_list].iterrows():
+	for index, row in df[flow_list].iterrows():
 		print '		Checking output node connectors: processing row %s' % index
 		out_conn_dictionary = {}
 		for key, value in flows_and_actions.iteritems():
@@ -537,13 +430,13 @@ def modified_output_columns(sim_csv, sim_id):
 					print 'Ignoring flow: %s' % err
 		past_report = str(row['index_nearest'])
 		if past_report == 'First':
-			df3.at[index, 'changed_output'] = 'First'
+			df.at[index, 'changed_output'] = 'First'
 		else:
 			out_conn_dictionary_b = {}
-			if row['is_buffer'] == False:
-				row2 = df3.iloc[[int(past_report)]]
+			if row['is_buffer'] == 'False':
+				row2 = df.loc[[int(past_report)]]
 			else:
-				row2 = buffer_df.iloc[[int(past_report)]]
+				row2 = df_buffer.loc[[int(past_report)]]
 			for key, value in flows_and_actions.iteritems():
 				for i in range(value + 1):
 					try:
@@ -555,111 +448,74 @@ def modified_output_columns(sim_csv, sim_id):
 						print 'Ignoring flow: %s' % err
 			for key in out_conn_dictionary:
 				if out_conn_dictionary[key] != out_conn_dictionary_b[key] and out_conn_dictionary[key] != 'nan' and out_conn_dictionary_b[key] != 'nan':
-					df3.at[index, 'changed_output'] = 'True'
-					#keep_true_bit = keep_true_bit ^ 1
+					df.at[index, 'changed_output'] = 'True'
 					break
 				else:
-					if keep_true_bit == 1:
-						df3.at[index, 'changed_output'] = 'True'
-					else:
-						df3.at[index, 'changed_output'] = 'False'
-	df3.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
-	del df3
-	del buffer_df
+					df.at[index, 'changed_output'] = 'False'
 	return
 
 
-def final_trimmer(sim_csv, sim_id, training_dataset = 'False'):
+def final_trimmer(df, training = 'False'):
 
-	df = pd.read_csv(str(sim_csv).replace('_node', '_modified_node'))
 	df['err_type'] = df.err_type.astype(str)
-	global node_columns_list
-	if training_dataset == 'True':
+	columns_list = df.columns.values.tolist()
+
+	if training == 'True':
 		for index, row, in df[['id']].iterrows():
 			if row['id'] != 'openflow2':
 				df.drop(index, inplace=True)
 
-	for i in range(0, len(node_columns_list) - 15):
-		if node_columns_list[i] == 'id' or node_columns_list[i] == '@timestamp' or node_columns_list[i] == 'changed_priority':
+	for i in range(0, len(columns_list) - 13):
+		if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
 			continue
-		df.drop(node_columns_list[i], axis=1, inplace=True)
+		df.drop(columns_list[i], axis=1, inplace=True)
 
 	for index, row, in df[['action', 'err_type']].iterrows():
 		if row['action'] == 'fix' or row['err_type'] == '-':
 			df.at[index, 'err_type'] = 'ok'
+	
 	df.drop(['action', 'index_nearest', 'is_buffer'], axis=1, inplace=True)
-	node_columns_list = df.columns.values.tolist()
-	df.to_csv(str(sim_csv).replace('_node', '_modified_node'), index=False)
-
-	del df
 	return
 
-def join_shards(csv_shards, sim_id, csv_type):
-
-	last_csv = None
-	for i in range(len(csv_shards)-1):
-		df1 = pd.read_csv(str(csv_shards[i]).replace(str(csv_type), 'modified_'+str(csv_type)))		
-		df2 = pd.read_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)))
-		df = pd.concat([df1, df2])
-		df.to_csv(str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type)), index=False)
-		last_csv = str(csv_shards[i+1]).replace(str(csv_type), 'modified_'+str(csv_type))
-	os.rename(str(last_csv), '/root/csv/'+sim_id+'_modified_'+str(csv_type)+'.csv')
-	del df
-	del df1
-	del df2
-	return
 
 #CHANGE TO START
 if __name__ == '__main__':
 
 	#Move this up
 	NODE_NUMBER_OF_FLOWS = 0
-	node_columns_list = []
 
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
 	training = str(config.get('main', 'training'))
+	bufferTimeWindow = dt.timedelta(seconds=int(config.get('main', 'buffer_time_window'))).total_seconds()
 
 	os.chdir('/root/csv')
 	csv_dict = {}
 	for file in glob.glob('*node.csv'):
 		if 'modified' not in file:
-			sim_index = file.replace("_node.csv", "")
-			csv_dict[sim_index] = ["/root/csv/" + str(sim_index) + "_node.csv", "/root/csv/" + str(sim_index) + "_simstate.csv", "/root/csv/" + str(sim_index) + "_topology.csv"]
+			sim_id = file.replace("_node.csv", "")
+			csv_dict[sim_id] = ["/root/csv/" + str(sim_id) + "_node.csv", "/root/csv/" + str(sim_id) + "_simstate.csv", "/root/csv/" + str(sim_id) + "_topology.csv"]
 
-	for sim_index in csv_dict:
+	for sim_id in csv_dict:
 		print 'Limiting size...'
-		csv_splitted = limit_size(csv_dict[sim_index], sim_index)
+		node_data = NodeDataChunks(csv_dict[sim_id][0], sim_id, bufferTimeWindow)
+		topo_data = TopoDataChunks(csv_dict[sim_id][2], sim_id, bufferTimeWindow)
+		state_data = DataChunks(csv_dict[sim_id][1], sim_id)
 
-		for key, value in csv_splitted[1].iteritems():
-			for csv in value:
-				print 'Trimming and syncing topo csv...'
-				topology_csv_trimmer(csv, sim_index)
-				time_sync_topo(csv, sim_index)
-			if len(value) > 1:
-				print 'Joining topo shards...'
-				join_shards(value, sim_index, 'topo')
+		for index, df in enumerate(topo_data.shards):
+			topology_csv_trimmer(df, topo_data.buffers[index])
+			time_sync_topo(df, state_data.shards)
 
-		for key, value in csv_splitted[0].iteritems():
-			for csv in value:
-				print "Working on node csv"
-				print "Trimming..."
-				general_trimmer(csv, sim_index)
-				print "Time syncing..."
-				add_nearest(csv, sim_index)
-				time_sync_node(csv, sim_index)
-				print "Checking in-ports..."
-				modified_inport_columns(csv, sim_index)
-				print "Checking priorities..."
-				priorities(csv, sim_index)
-				print "Checking output-node-connectors..."
-				modified_output_columns(csv, sim_index)
-				print "Adding topology field..."
-				add_topology_field(csv, sim_index)
-				print "Final trimming..."
-				final_trimmer(csv, sim_index, training_dataset=training)
-			if len(value) > 1:
-				print 'Joining node shards...'
-				join_shards(value, sim_index, 'node')
-			else:
-				os.rename('/root/csv/shards/'+sim_index+'_modified_node_0.csv', '/root/csv/'+sim_index+'_modified_node.csv')
+		for index, df in enumerate(node_data.shards):
+			general_trimmer(df, node_data.buffers[index])
+			add_nearest(df, node_data.buffers[index])
+			time_sync_node(df, state_data.shards)
+			modified_inport_columns(df, node_data.buffers[index])
+			priorities(df, node_data.buffers[index])
+			modified_output_columns(df, node_data.buffers[index])
+			add_topology_field(df, topo_data)
+			final_trimmer(df, training)
+
+		node_data.join()
+		topo_data.join()
+		state_data.join()

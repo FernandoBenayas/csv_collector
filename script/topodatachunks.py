@@ -1,0 +1,51 @@
+import pandas as pd
+from datachunks import DataChunks
+from collections import OrderedDict
+import datetime as dt
+import os
+
+class TopoDataChunks(DataChunks):
+
+
+	def __init__(self, source, sim_id, bufferTimeWindow = 30):
+
+		DataChunks.__init__(self, source, sim_id)
+		self.buffers = []
+		self.size = 0
+
+		for index, shard in enumerate(self.shards):
+			shard_buffer = self.buffer(bufferTimeWindow, index)
+			self.buffers.append(shard_buffer)
+
+	def buffer(self, bufferTimeWindow, index):
+
+		if index == 0:
+			return self.shards[index][0:0]
+
+		first_entry_time = self.datetimefy(self.shards[index].iloc[0]['@timestamp'])
+		comparate_time = self.datetimefy(self.original_df.iloc[5000*index]['@timestamp'])
+		j = 1
+		while (first_entry_time - comparate_time).total_seconds() < bufferTimeWindow:
+			j += 1
+			comparate_time = self.datetimefy(self.original_df.iloc[5000*index-j]['@timestamp'])
+		buffer_dataframe = self.original_df[5000*index-(j+1):5000*index]
+
+		return buffer_dataframe
+
+	def datetimefy(self, timestamp):
+
+		list_timestamp = timestamp.split("T")
+		date_list = list_timestamp[0].split("-")
+		time_list = list_timestamp[1].split(":")
+		seconds_list = time_list[2].split(".")
+		copy = seconds_list[1]
+		seconds_list[1] = int(copy.replace("Z", ""))/1000
+
+	 	return dt.datetime(int(date_list[0]), int(date_list[1]), int(date_list[2]), int(time_list[0]), int(time_list[1]), int(seconds_list[0]), int(seconds_list[1]))
+
+	def join(self):
+
+		final_df = pd.concat(self.shards)
+		final_df.to_csv(self.source.replace('.csv', '_modified.csv'), index=False)
+
+		return
