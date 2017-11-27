@@ -81,58 +81,61 @@ def trace_changes(df, df_buffer):
 		nearestreport = indexlist[0]
 
 		if row['changed_output'] == 'True':
-			df.at[index, 'changed_output'] = 0
+			df.at[index, 'changed_output'] = 'True'
 		else:
 			if nearestreport != 'First':
-				j = 1
+				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
 						row2 = df.iloc[[int(i)]]
 					else:
 						row2 = df_buffer.iloc[[int(i)]]
 					if row2['changed_output'].item() != 'True':
-						j += 1
+						continue
 					else:
+						has_changed = True
 						break
-				df.at[index, 'changed_output'] = j
+				df.at[index, 'changed_output'] = str(has_changed)
 			else:
 				df.at[index, 'changed_output'] = 'First'
 
 		
 		if row['changed_priority'] == 'True':
-			df.at[index, 'changed_priority'] = 0
+			df.at[index, 'changed_priority'] = 'True'
 		else:
 			if nearestreport != 'First':
-				j = 1
+				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
 						row2 = df.iloc[[int(i)]]
 					else:
 						row2 = df_buffer.iloc[[int(i)]]
 					if row2['changed_priority'].item() != 'True':
-						j += 1
+						continue
 					else:
+						has_changed = True
 						break
-				df.at[index, 'changed_priority'] = j
+				df.at[index, 'changed_priority'] = str(has_changed)
 			else:
 				df.at[index, 'changed_priority'] = 'First'
 		
 
 		if row['changed_inport'] == 'True':
-			df.at[index, 'changed_inport'] = 0
+			df.at[index, 'changed_inport'] = 'True'
 		else:
 			if nearestreport != 'First':
-				j = 1
+				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
 						row2 = df.iloc[[int(i)]]
 					else:
 						row2 = df_buffer.iloc[[int(i)]]
 					if row2['changed_inport'].item() != 'True':
-						j += 1
+						continue
 					else:
+						has_changed = True
 						break
-				df.at[index, 'changed_inport'] = j
+				df.at[index, 'changed_inport'] = str(has_changed)
 			else:
 				df.at[index, 'changed_inport'] = 'First'
 
