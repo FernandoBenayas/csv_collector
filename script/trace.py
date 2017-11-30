@@ -27,6 +27,7 @@ def datetimefy(timestamp):
 def add_nearest(df, df_buffer, timeWindow = 0):
 
 	global INDEX_NEAREST
+	print "Storing nearest entries"
 
 	for index, row in df[['id', '@timestamp']].iterrows():
 		origin_datetime = datetimefy(str(row['@timestamp']))
@@ -59,11 +60,10 @@ def add_nearest(df, df_buffer, timeWindow = 0):
 				if diff > 0 and diff < timeWindow:
 					timewindow_dictionary[str(index2)] = False
 			for index_buffer, row_buffer  in buffer_trimmed[['id', '@timestamp']].iloc[::-1].iterrows():
-				print index_buffer
 				state_datetime = datetimefy(str(row_buffer['@timestamp']))
 				diff = (origin_datetime - state_datetime).total_seconds()
 				if diff > 0 and diff < timeWindow:
-					timewindow_dictionary[str(index2)] = True
+					timewindow_dictionary[str(index_buffer)] = True
 			if not timewindow_dictionary:
 				INDEX_NEAREST[index] = {'First': False}
 			else:
@@ -72,9 +72,13 @@ def add_nearest(df, df_buffer, timeWindow = 0):
 
 def trace_changes(df, df_buffer):
 
-	print INDEX_NEAREST
+	text_file = open("output.txt", "w")
+	text_file.write(str(INDEX_NEAREST))
+	text_file.close()
+
 	flow_list = ['changed_output','changed_priority','changed_inport']
 	for index, row in df[flow_list].iloc[::-1].iterrows():
+		print "		Processing row %s" % index
 
 		pastreport_dict = INDEX_NEAREST.get(index)
 		indexlist = pastreport_dict.keys()
@@ -87,9 +91,9 @@ def trace_changes(df, df_buffer):
 				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
-						row2 = df.iloc[[int(i)]]
+						row2 = df.loc[[int(i)]]
 					else:
-						row2 = df_buffer.iloc[[int(i)]]
+						row2 = df_buffer.loc[[int(i)]]
 					if row2['changed_output'].item() != 'True':
 						continue
 					else:
@@ -107,9 +111,9 @@ def trace_changes(df, df_buffer):
 				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
-						row2 = df.iloc[[int(i)]]
+						row2 = df.loc[[int(i)]]
 					else:
-						row2 = df_buffer.iloc[[int(i)]]
+						row2 = df_buffer.loc[[int(i)]]
 					if row2['changed_priority'].item() != 'True':
 						continue
 					else:
@@ -127,9 +131,9 @@ def trace_changes(df, df_buffer):
 				has_changed = False
 				for i in indexlist:
 					if pastreport_dict[i] == False:
-						row2 = df.iloc[[int(i)]]
+						row2 = df.loc[[int(i)]]
 					else:
-						row2 = df_buffer.iloc[[int(i)]]
+						row2 = df_buffer.loc[[int(i)]]
 					if row2['changed_inport'].item() != 'True':
 						continue
 					else:
