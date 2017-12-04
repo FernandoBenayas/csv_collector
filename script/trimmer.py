@@ -84,30 +84,23 @@ def general_trimmer(df, df_buffer):
 			else:
 				df.at[index, "not_dropping_lldp"] = 'False'
 
-	print 'Creating hard timeout field'
+	print 'Creating timeout field'
 	h_timeout_list = [s for s in node_columns_list if 'hard-timeout' in s]
-	df['modified_h_timeout'] = ""
+	df['modified_timeout'] = False
 
 	for index, row in df[h_timeout_list].iterrows():
 		for column in h_timeout_list:
 			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) != 300:
-				df.at[index, "modified_h_timeout"] = True
+				df.at[index, "modified_timeout"] = True
 				break
-			else:
-				df.at[index, "modified_h_timeout"] = False
-
-	print 'Creating idle timeout field'
 
 	i_timeout_list = [s for s in node_columns_list if 'idle-timeout' in s]
-	df['modified_i_timeout'] = ""
 
 	for index, row in df[i_timeout_list].iterrows():
 		for column in i_timeout_list:
 			if str(row[column]) != 'nan' and int(row[column]) > 0 and int(row[column]) <= 15:
-				df.at[index, "modified_i_timeout"] = True
+				df.at[index, "modified_timeout"] = True
 				break
-			else:
-				df.at[index, "modified_i_timeout"] = False
 
 	print 'Creating node connector list'
 	node_connector_list = [s for s in node_columns_list if 'node-connector.' in s and '.id' in s and 'address' not in s]
@@ -129,13 +122,18 @@ def general_trimmer(df, df_buffer):
 			df.at[index, "node_connector_down"] = 'isolated'
 		node_connector_counter = 0
 
-	global NODE_NUMBER_OF_FLOWS
+	global NODE_NUMBER_OF_FLOWS_MATCHIN
 	# Looking for the number of flows in the node csv
-	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s]
+	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.match.in-port' in s]
 	for column in flow_list:
-		flow_number = int(column.split('.')[3])
-		if flow_number > NODE_NUMBER_OF_FLOWS:
-			NODE_NUMBER_OF_FLOWS = flow_number
+		NODE_NUMBER_OF_FLOWS_MATCHIN.append(column)
+
+	global NODE_NUMBER_OF_FLOWS_PRIORITY
+	# Looking for the number of flows in the node csv
+	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.priority' in s]
+	for column in flow_list:
+		NODE_NUMBER_OF_FLOWS_PRIORITY.append(column)
+
 
 	df['err_type'] = "sample"
 	df['action'] = "sample"
@@ -314,13 +312,10 @@ def modified_inport_columns(df, df_buffer):
 	for index, row in df[flow_list].iterrows():
 		print '		Checking in-ports: processing row %s' % index
 		in_port_dictionary = {}
-		for i in range(NODE_NUMBER_OF_FLOWS + 1):
-			try:
-				in_port = str(row['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'])
-				in_port_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = in_port
-			except KeyError as err:
-				print 'Ignoring flow: %s' % err
-				break
+		for i in NODE_NUMBER_OF_FLOWS_MATCHIN:
+			in_port = str(row[str(i)])
+			flow_id = str(i).split('.')[3]
+			in_port_dictionary[str(row['flow-node-inventory:table.68.flow.' + flow_id + '.id'])] = in_port
 
 		past_report = str(row['index_nearest'])
 		# Once we have the closest entry (if there is one), we create a 'b' dictionary,
@@ -333,14 +328,15 @@ def modified_inport_columns(df, df_buffer):
 				row2 = df[flow_list].loc[[int(past_report)]]
 			else:
 				row2 = df_buffer[buffer_flow_list].loc[[int(past_report)]]
-			for i in range(NODE_NUMBER_OF_FLOWS + 1):
-				try:
-					in_port = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.match.in-port'].item())
-					in_port_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.id'].item())] = in_port
-				except KeyError as err:
-					print "Ignoring flow: %s" % err
-					break
 
+			for i in NODE_NUMBER_OF_FLOWS_MATCHIN:
+				in_port = str(row2[str(i)].item())
+				flow_id = str(i).split('.')[3]
+				in_port_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + flow_id + '.id'].item())] = in_port
+
+			if in_port_dictionary.keys() != in_port_dictionary_b.keys():
+				df.at[index, 'changed_inport'] = 'True'
+				continue
 			for key in in_port_dictionary:
 				try:
 					if in_port_dictionary[key] != in_port_dictionary_b[key]:
@@ -348,10 +344,10 @@ def modified_inport_columns(df, df_buffer):
 						break
 					else:
 						df.at[index, 'changed_inport'] = 'False'
-
 				except KeyError as err:
 					print '		Flow unpaired: %s' % key
-					continue
+					df.at[index, 'changed_inport'] = 'True'
+					break
 	return
 
 def priorities(df, df_buffer):
@@ -365,13 +361,11 @@ def priorities(df, df_buffer):
 	for index, row in df[flow_list].iterrows():
 		print '		Checking priority: processing row %s' % index
 		priority_dictionary = {}
-		for i in range(NODE_NUMBER_OF_FLOWS + 1):
-			try:
-				priority = str(row['flow-node-inventory:table.68.flow.' + str(i) + '.priority'])
-				priority_dictionary[str(row['flow-node-inventory:table.68.flow.' + str(i) + '.id'])] = priority
-			except KeyError as err:
-				print 'Ignoring flow: %s' % err
-				break
+		for i in NODE_NUMBER_OF_FLOWS_PRIORITY:
+			priority = str(row[str(i)])
+			flow_id = str(i).split('.')[3]
+			priority_dictionary[str(row['flow-node-inventory:table.68.flow.' + flow_id + '.id'])] = priority
+
 		past_report = str(row['index_nearest'])
 		
 		if past_report == 'First':
@@ -382,13 +376,17 @@ def priorities(df, df_buffer):
 				row2 = df[flow_list].loc[[int(past_report)]]
 			else:
 				row2 = df_buffer[buffer_flow_list].loc[[int(past_report)]]
-			for i in range(NODE_NUMBER_OF_FLOWS + 1):
-				try:
-					priority = str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.priority'].item())
-					priority_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + str(i) + '.id'].item())] = priority
-				except KeyError as err:
-					print "Ignoring flow: %s" % err
-					break
+
+			for i in NODE_NUMBER_OF_FLOWS_PRIORITY:
+				priority = str(row2[str(i)].item())
+				flow_id = str(i).split('.')[3]
+				priority_dictionary_b[str(row2['flow-node-inventory:table.68.flow.' + flow_id + '.id'].item())] = priority
+
+
+			if priority_dictionary.keys() != priority_dictionary_b.keys():
+				df.at[index, 'changed_priority'] = 'True'
+				continue
+
 			for key in priority_dictionary:
 				try:
 					if priority_dictionary[key] != priority_dictionary_b[key]:
@@ -398,7 +396,8 @@ def priorities(df, df_buffer):
 						df.at[index, 'changed_priority'] = 'False'
 				except KeyError as err:
 					print '		Flow unpaired: %s' % key
-					continue
+					df.at[index, 'changed_priority'] = 'True'
+					break
 	return
 
 # Checks if the 'output-node-connector' field in each flow has been modified
@@ -413,21 +412,18 @@ def modified_output_columns(df, df_buffer):
 	for column in flow_columns_list:
 		flow_id = int(column.split('.')[3])
 		action_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' + str(flow_id) in s and 'output-action.output-node-connector' in s]
-		flows_and_actions[flow_id] = len(action_list)
+		if action_list:
+			flows_and_actions[flow_id] = action_list
 
 	flow_list.extend(['index_nearest', 'is_buffer'])
 	for index, row in df[flow_list].iterrows():
 		print '		Checking output node connectors: processing row %s' % index
 		out_conn_dictionary = {}
 		for key, value in flows_and_actions.iteritems():
-			for i in range(value + 1):
-				try:
-					action_id = 'flow-node-inventory:table.68.flow.' + str(key) + '.instructions.instruction.0.apply-actions.action.'+ str(i) +'.output-action.output-node-connector'
-					out_conn = str(row[action_id]).replace('.0', '')
-					out_conn_dictionary[action_id] = out_conn
-					break
-				except KeyError as err:
-					print 'Ignoring flow: %s' % err
+			for i in value:
+				out_conn = str(row[i]).replace('.0', '')
+				out_conn_dictionary[i] = out_conn
+
 		past_report = str(row['index_nearest'])
 		if past_report == 'First':
 			df.at[index, 'changed_output'] = 'First'
@@ -438,22 +434,21 @@ def modified_output_columns(df, df_buffer):
 			else:
 				row2 = df_buffer.loc[[int(past_report)]]
 			for key, value in flows_and_actions.iteritems():
-				for i in range(value + 1):
-					try:
-						action_id = 'flow-node-inventory:table.68.flow.' + str(key) + '.instructions.instruction.0.apply-actions.action.'+ str(i) +'.output-action.output-node-connector'
-						out_conn = str(row2[action_id].item()).replace('.0', '')
-						out_conn_dictionary_b[action_id] = out_conn
-						break
-					except KeyError as err:
-						print 'Ignoring flow: %s' % err
+				for i in value:
+					out_conn = str(row2[i].item()).replace('.0', '')
+					out_conn_dictionary_b[i] = out_conn
+
+			if out_conn_dictionary.keys() != out_conn_dictionary_b.keys():
+				df.at[index, 'changed_output'] = 'True'
+				continue
+
 			for key in out_conn_dictionary:
-				if out_conn_dictionary[key] != out_conn_dictionary_b[key] and out_conn_dictionary[key] != 'nan' and out_conn_dictionary_b[key] != 'nan':
+				if out_conn_dictionary[key] != out_conn_dictionary_b[key]:
 					df.at[index, 'changed_output'] = 'True'
 					break
 				else:
 					df.at[index, 'changed_output'] = 'False'
 	return
-
 
 def final_trimmer(df, training = 'False'):
 
@@ -482,7 +477,8 @@ def final_trimmer(df, training = 'False'):
 if __name__ == '__main__':
 
 	#Move this up
-	NODE_NUMBER_OF_FLOWS = 0
+	NODE_NUMBER_OF_FLOWS_PRIORITY = []
+	NODE_NUMBER_OF_FLOWS_MATCHIN = []
 
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
