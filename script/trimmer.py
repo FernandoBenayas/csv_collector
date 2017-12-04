@@ -82,7 +82,7 @@ def general_trimmer(df, df_buffer):
 					df.at[index, "not_dropping_lldp"] = 'False'
 					break
 			else:
-				df.at[index, "not_dropping_lldp"] = 'Not LLDP flow'
+				df.at[index, "not_dropping_lldp"] = 'False'
 
 	print 'Creating hard timeout field'
 	h_timeout_list = [s for s in node_columns_list if 'hard-timeout' in s]
