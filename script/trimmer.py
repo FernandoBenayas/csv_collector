@@ -408,6 +408,8 @@ def modified_output_columns(df, df_buffer):
 	df["changed_output"] = "sample"
 	flows_and_actions = {}
 
+	nf = open("/root/log", "w")
+
 	flow_columns_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and 'idle' not in s ]
 	for column in flow_columns_list:
 		flow_id = int(column.split('.')[3])
@@ -418,6 +420,7 @@ def modified_output_columns(df, df_buffer):
 	flow_list.extend(['index_nearest', 'is_buffer'])
 	for index, row in df[flow_list].iterrows():
 		print '		Checking output node connectors: processing row %s' % index
+		nf.write('		Checking output node connectors: processing row ' + str(index))
 		out_conn_dictionary = {}
 		for key, value in flows_and_actions.iteritems():
 			for i in value:
@@ -438,6 +441,11 @@ def modified_output_columns(df, df_buffer):
 					out_conn = str(row2[i].item()).replace('.0', '')
 					out_conn_dictionary_b[i] = out_conn
 
+
+			nf.write(str(out_conn_dictionary))
+			nf.write('-------------------------------')
+			nf.write(str(out_conn_dictionary_b))
+
 			if out_conn_dictionary.keys() != out_conn_dictionary_b.keys():
 				df.at[index, 'changed_output'] = 'True'
 				continue
@@ -448,6 +456,7 @@ def modified_output_columns(df, df_buffer):
 					break
 				else:
 					df.at[index, 'changed_output'] = 'False'
+	nf.close()
 	return
 
 def final_trimmer(df, training = 'False'):
