@@ -76,7 +76,7 @@ def trace_changes(df, df_buffer):
 	text_file.write(str(INDEX_NEAREST))
 	text_file.close()
 
-	flow_list = ['changed_output','changed_priority','changed_inport']
+	flow_list = ['changed_output','changed_priority','changed_inport', 'not_dropping_lldp']
 	for index, row in df[flow_list].iloc[::-1].iterrows():
 		print "		Processing row %s" % index
 
@@ -142,6 +142,26 @@ def trace_changes(df, df_buffer):
 				df.at[index, 'changed_inport'] = str(has_changed)
 			else:
 				df.at[index, 'changed_inport'] = 'First'
+ 
+		print row['not_dropping_lldp'] == False
+		if row['not_dropping_lldp'] == False:
+			df.at[index, 'not_dropping_lldp'] = False
+		else:
+			if nearestreport != 'First':
+				has_changed = False
+				for i in indexlist:
+					if pastreport_dict[i] == False:
+						row2 = df.loc[[int(i)]]
+					else:
+						row2 = df_buffer.loc[[int(i)]]
+					if row2['not_dropping_lldp'].item() != False:
+						continue
+					else:
+						has_changed = True
+						break
+				df.at[index, 'not_dropping_lldp'] = not has_changed
+			else:
+				df.at[index, 'not_dropping_lldp'] = 'First'
 
 	return
 
