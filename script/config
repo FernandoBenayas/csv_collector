@@ -2,4 +2,4 @@
 elasticsearch_url = elasticsearch:9200
 time_window = 45
 buffer_time_window = 30
-training = True
+training = 2

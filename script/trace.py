@@ -72,10 +72,6 @@ def add_nearest(df, df_buffer, timeWindow = 0):
 
 def trace_changes(df, df_buffer):
 
-	text_file = open("output.txt", "w")
-	text_file.write(str(INDEX_NEAREST))
-	text_file.close()
-
 	flow_list = ['changed_output','changed_priority','changed_inport', 'not_dropping_lldp']
 	for index, row in df[flow_list].iloc[::-1].iterrows():
 		print "		Processing row %s" % index

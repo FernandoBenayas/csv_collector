@@ -408,8 +408,6 @@ def modified_output_columns(df, df_buffer):
 	df["changed_output"] = "sample"
 	flows_and_actions = {}
 
-	nf = open("/root/log", "w")
-
 	flow_columns_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and 'idle' not in s ]
 	for column in flow_columns_list:
 		flow_id = int(column.split('.')[3])
@@ -420,7 +418,6 @@ def modified_output_columns(df, df_buffer):
 	flow_list.extend(['index_nearest', 'is_buffer'])
 	for index, row in df[flow_list].iterrows():
 		print '		Checking output node connectors: processing row %s' % index
-		nf.write('		Checking output node connectors: processing row ' + str(index))
 		out_conn_dictionary = {}
 		for key, value in flows_and_actions.iteritems():
 			for i in value:
@@ -441,11 +438,6 @@ def modified_output_columns(df, df_buffer):
 					out_conn = str(row2[i].item()).replace('.0', '')
 					out_conn_dictionary_b[i] = out_conn
 
-
-			nf.write(str(out_conn_dictionary))
-			nf.write('-------------------------------')
-			nf.write(str(out_conn_dictionary_b))
-
 			if out_conn_dictionary.keys() != out_conn_dictionary_b.keys():
 				df.at[index, 'changed_output'] = 'True'
 				continue
@@ -456,18 +448,12 @@ def modified_output_columns(df, df_buffer):
 					break
 				else:
 					df.at[index, 'changed_output'] = 'False'
-	nf.close()
 	return
 
-def final_trimmer(df, training = 'False'):
+def final_trimmer(df):
 
 	df['err_type'] = df.err_type.astype(str)
 	columns_list = df.columns.values.tolist()
-
-	if training == 'True':
-		for index, row, in df[['id']].iterrows():
-			if row['id'] != 'openflow2':
-				df.drop(index, inplace=True)
 
 	for i in range(0, len(columns_list) - 13):
 		if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
@@ -494,6 +480,9 @@ if __name__ == '__main__':
 	training = str(config.get('main', 'training'))
 	bufferTimeWindow = dt.timedelta(seconds=int(config.get('main', 'buffer_time_window'))).total_seconds()
 
+	if training == 'False':
+		training = False
+
 	os.chdir('/root/csv')
 	csv_dict = {}
 	for file in glob.glob('*node.csv'):
@@ -503,7 +492,7 @@ if __name__ == '__main__':
 
 	for sim_id in csv_dict:
 		print 'Limiting size...'
-		node_data = NodeDataChunks(csv_dict[sim_id][0], sim_id, bufferTimeWindow)
+		node_data = NodeDataChunks(csv_dict[sim_id][0], sim_id, bufferTimeWindow, training)
 		topo_data = TopoDataChunks(csv_dict[sim_id][2], sim_id, bufferTimeWindow)
 		state_data = DataChunks(csv_dict[sim_id][1], sim_id)
 
@@ -519,7 +508,7 @@ if __name__ == '__main__':
 			priorities(df, node_data.buffers[index])
 			modified_output_columns(df, node_data.buffers[index])
 			add_topology_field(df, topo_data)
-			final_trimmer(df, training)
+			final_trimmer(df)
 
 		node_data.join()
 		topo_data.join()
