@@ -7,9 +7,9 @@ import os
 class NodeDataChunks(DataChunks):
 
 
-	def __init__(self, source, sim_id, bufferTimeWindow = 30):
+	def __init__(self, source, sim_id, bufferTimeWindow = 30, training = False):
 
-		DataChunks.__init__(self, source, sim_id)
+		DataChunks.__init__(self, source, sim_id, training)
 		self.buffers = []
 		self.size = 0
 

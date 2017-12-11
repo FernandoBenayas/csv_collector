@@ -6,11 +6,17 @@ import os
 
 class DataChunks(object):
 
-	def __init__(self, source, sim_id):
+	def __init__(self, source, sim_id, training = False):
 
 		self.sim_id = sim_id
 		self.source = source
-		self.original_df = pd.read_csv(source)
+
+		if bool(training) != False:
+			df = pd.read_csv(source)
+			self.original_df = df.ix[df.id == 'openflow'+str(training)]
+		else:
+			self.original_df = pd.read_csv(source)
+
 		splits = int(self.original_df.shape[0] / 5000)
 		if self.original_df.shape[0] == 5000:
 			splits = 0
