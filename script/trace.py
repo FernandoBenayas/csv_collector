@@ -161,24 +161,6 @@ def trace_changes(df, df_buffer):
 
 	return
 
-def final_trimmer(sim_csv, sim_id, training_dataset = 'False'):
-	node_columns_list = df.columns.values.tolist()
-	global INDEX_NEAREST
-
-	df['err_type'] = df.err_type.astype(str)
-	if training_dataset == 'True':
-		for index, row, in df[['id']].iterrows():
-			if row['id'] != 'openflow2':
-				df.drop(index, inplace=True)
-
-	for i in range(0, len(node_columns_list) - 15):
-		if node_columns_list[i] == 'id' or node_columns_list[i] == '@timestamp' or node_columns_list[i] == 'changed_priority':
-			continue
-		df.drop(node_columns_list[i], axis=1, inplace=True)
-
-	INDEX_NEAREST = {}
-	return
-
 #CHANGE TO START
 if __name__ == '__main__':
 
@@ -202,7 +184,6 @@ if __name__ == '__main__':
 		for index, df in enumerate(node_data.shards):
 			add_nearest(df, node_data.buffers[index], timeWindow)
 			trace_changes(df, node_data.buffers[index])
-			final_trimmer(df, training)
 
 		node_data.join()
 
