@@ -135,6 +135,15 @@ def general_trimmer(df, df_buffer):
 		NODE_NUMBER_OF_FLOWS_PRIORITY.append(column)
 
 
+	global NODE_NUMBER_OF_FLOWS
+	# Looking for the number of flows in the node csv
+	flow_list = [s for s in node_columns_list if 'flow-node-inventory:table.68.flow.' in s and '.id' in s and 'idle' not in s]
+	for column in flow_list:
+		flow_number = int(column.split('.')[3])
+		if flow_number > NODE_NUMBER_OF_FLOWS:
+			NODE_NUMBER_OF_FLOWS = flow_number
+
+
 	df['err_type'] = "sample"
 	df['action'] = "sample"
 	return
@@ -293,6 +302,51 @@ def time_sync_topo(df_topo, df_state_list):
 
 		df_topo.at[index, 'err_type'] = str(min_diff['err'])
 		df_topo.at[index, 'action'] = str(min_diff['action'])
+
+	return
+
+
+# Checks if the order fields were modified
+def order_columns(df, df_buffer):
+
+	df['changed_order'] = 'nan'
+
+	flow_list = []
+	for i in range(0, NODE_NUMBER_OF_FLOWS + 1):
+		print i
+		flow_list.append('flow-node-inventory:table.68.flow.'+str(i)+'.id')
+
+	columns_list = flow_list[:]
+	columns_list.extend(['@timestamp', 'id', 'index_nearest', 'is_buffer'])
+	print columns_list
+
+	for index, row in df[columns_list].iterrows():
+		order_dict = {}
+		for column in flow_list:
+			order_dict[column] = str(row[column])
+
+		past_report = str(row['index_nearest'])
+
+		if past_report == 'First':
+				df.at[index, 'changed_order'] = 'First'
+		else:
+			order_dict_b = {}
+			if row['is_buffer'] == 'False':
+				row2 = df[columns_list].loc[[int(past_report)]]
+			else:
+				row2 = df_buffer[columns_list].loc[[int(past_report)]]
+
+			for column in flow_list:
+				order_dict_b[column] = str(row2[column].item())
+
+			for key in order_dict:
+				if order_dict[key] != order_dict_b[key]:
+					df.at[index, 'changed_order'] = 'True'
+					break
+				else:
+					df.at[index, 'changed_order'] = 'False'
+				
+
 
 	return
 
@@ -474,6 +528,7 @@ if __name__ == '__main__':
 	#Move this up
 	NODE_NUMBER_OF_FLOWS_PRIORITY = []
 	NODE_NUMBER_OF_FLOWS_MATCHIN = []
+	NODE_NUMBER_OF_FLOWS = 0
 
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
@@ -504,6 +559,7 @@ if __name__ == '__main__':
 			general_trimmer(df, node_data.buffers[index])
 			add_nearest(df, node_data.buffers[index])
 			time_sync_node(df, state_data.shards)
+			order_columns(df, node_data.buffers[index])
 			modified_inport_columns(df, node_data.buffers[index])
 			priorities(df, node_data.buffers[index])
 			modified_output_columns(df, node_data.buffers[index])

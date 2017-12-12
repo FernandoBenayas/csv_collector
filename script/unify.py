@@ -21,7 +21,10 @@ def unify(df):
 
 		if row['changed_output'] == 'True' or row['changed_inport'] == 'True' or row['changed_priority'] == 'True':
 			df.at[index, 'changed_flow'] = 'True'
-
+		else if row['changed_inport'] == 'First':
+			df.at[index, 'changed_flow'] = 'True'
+		else:
+			df.at[index, 'changed_flow'] = 'False'
 	return
 
 def final_trimmer(df):
