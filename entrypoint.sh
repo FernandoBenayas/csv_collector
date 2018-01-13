@@ -4,7 +4,7 @@ echo Checking if elasticsearch is up and listening...
 ES_URL="http://elasticsearch:9200/_cat/indices?v"
 es_request=$(curl $ES_URL)
 
-while [[ $es_request != *"simulation"* ]]; do
+while [[ $es_request != *"open"* ]]; do
 	es_request=$(curl $ES_URL)
 	echo Elasticsearch is still sleeping...
 	/bin/sleep 5
