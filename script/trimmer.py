@@ -515,9 +515,10 @@ def final_trimmer(df):
 		df.drop(columns_list[i], axis=1, inplace=True)
 
 	for index, row, in df[['action', 'err_type']].iterrows():
-		if row['action'] == 'fix' or row['err_type'] == '-':
+		if (row['action'] == 'fix' and row['err_type'] != 'buffer') or row['err_type'] == '-':
 			df.at[index, 'err_type'] = 'ok'
-	
+		if row['err_type'] == 'buffer':
+			df.drop(index, inplace = True)
 	df.drop(['action', 'index_nearest', 'is_buffer'], axis=1, inplace=True)
 	return
 
