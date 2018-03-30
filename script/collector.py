@@ -55,5 +55,4 @@ if __name__ == '__main__':
 		c = Popen(["es2csv", "-u", "http://"+str(es_url), "-r", "-q", "@./query_topo.json", "-i", index, "-o", "../csv/" + index + "_topology" + ".csv"], stdout=PIPE)
 		c.communicate()
 
-		#trimmer.start(window_time)
-
+	trimmer.start()

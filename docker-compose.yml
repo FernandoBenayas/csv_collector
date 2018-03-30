@@ -15,7 +15,7 @@ services:
   networks:
    - el
  csv_collector:
-  image: fernandobenayas/csv_collector:latest
+  image: yo:csvcollector
   container_name: csv_collector
   depends_on:
    - elasticsearch

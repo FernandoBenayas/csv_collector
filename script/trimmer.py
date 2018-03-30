@@ -6,9 +6,14 @@ import glob
 import sys
 import ConfigParser
 import math
+import trace
 from datachunks import DataChunks
 from nodedatachunks import NodeDataChunks
 from topodatachunks import TopoDataChunks
+
+NODE_NUMBER_OF_FLOWS_PRIORITY = []
+NODE_NUMBER_OF_FLOWS_MATCHIN = []
+NODE_NUMBER_OF_FLOWS = 0
 
 def datetimefy(timestamp):
 
@@ -510,8 +515,7 @@ def final_trimmer(df):
 	columns_list = df.columns.values.tolist()
 
 	for i in range(0, len(columns_list) - 13):
-		# if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
-		if columns_list[i] == 'changed_priority':
+		if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
 			continue
 		df.drop(columns_list[i], axis=1, inplace=True)
 
@@ -521,18 +525,14 @@ def final_trimmer(df):
 		if row['err_type'] == 'buffer':
 			df.drop(index, inplace = True)
 	df.drop(['action', 'index_nearest', 'is_buffer'], axis=1, inplace=True)
-	df.drop(['node_connector_down', 'change_order'], axis=1, inplace=True)
+	df.drop(['node_connector_down', 'changed_order'], axis=1, inplace=True)
 
 	return
 
 
-#CHANGE TO START
-if __name__ == '__main__':
+def start():
 
-	#Move this up
-	NODE_NUMBER_OF_FLOWS_PRIORITY = []
-	NODE_NUMBER_OF_FLOWS_MATCHIN = []
-	NODE_NUMBER_OF_FLOWS = 0
+
 
 	config = ConfigParser.ConfigParser()
 	config.readfp(open('config', 'r'))
@@ -573,3 +573,7 @@ if __name__ == '__main__':
 		node_data.join()
 		topo_data.join()
 		state_data.join()
+
+	trace.start()
+
+	return

@@ -10,6 +10,8 @@ import shutil
 from collections import OrderedDict
 from nodedatachunks import NodeDataChunks
 
+INDEX_NEAREST = {}
+
 def datetimefy(timestamp):
 
 	list_timestamp = timestamp.split("T")
@@ -72,7 +74,9 @@ def add_nearest(df, df_buffer, timeWindow = 0):
 
 def trace_changes(df, df_buffer):
 
-	flow_list = ['changed_output','changed_priority','changed_inport', 'not_dropping_lldp', 'changed_order']
+	# flow_list = ['changed_output', 'changed_priority', 'changed_inport', 'not_dropping_lldp', 'changed_order']
+	flow_list = ['changed_output', 'changed_priority', 'changed_inport', 'not_dropping_lldp']
+
 	for index, row in df[flow_list].iloc[::-1].iterrows():
 		print "		Processing row %s" % index
 
@@ -157,34 +161,34 @@ def trace_changes(df, df_buffer):
 				df.at[index, 'not_dropping_lldp'] = not has_changed
 			else:
 				df.at[index, 'not_dropping_lldp'] = 'First'
+		#
+		# if row['changed_order'] == 'True':
+		# 	df.at[index, 'changed_order'] = 'True'
+		# else:
+		# 	if nearestreport != 'First':
+		# 		has_changed = False
+		# 		for i in indexlist:
+		# 			if pastreport_dict[i] == False:
+		# 				row2 = df.loc[[int(i)]]
+		# 			else:
+		# 				row2 = df_buffer.loc[[int(i)]]
+		# 			if row2['changed_order'].item() != 'True':
+		# 				continue
+		# 			else:
+		# 				has_changed = True
+		# 				break
+		# 		df.at[index, 'changed_order'] = str(has_changed)
+		# 	else:
+		# 		df.at[index, 'changed_order'] = 'First'
 
-		if row['changed_order'] == 'True':
-			df.at[index, 'changed_order'] = 'True'
-		else:
-			if nearestreport != 'First':
-				has_changed = False
-				for i in indexlist:
-					if pastreport_dict[i] == False:
-						row2 = df.loc[[int(i)]]
-					else:
-						row2 = df_buffer.loc[[int(i)]]
-					if row2['changed_order'].item() != 'True':
-						continue
-					else:
-						has_changed = True
-						break
-				df.at[index, 'changed_order'] = str(has_changed)
-			else:
-				df.at[index, 'changed_order'] = 'First'
+	df.drop(['id', '@timestamp'], axis=1, inplace=True)
 	return
 
-#CHANGE TO START
-if __name__ == '__main__':
 
-	INDEX_NEAREST = {}
+def start():
 
 	config = ConfigParser.ConfigParser()
-	config.readfp(open('config', 'r'))
+	config.readfp(open('/root/script/config', 'r'))
 	training = str(config.get('main', 'training'))
 	bufferTimeWindow = dt.timedelta(seconds=int(config.get('main', 'buffer_time_window'))).total_seconds()
 	timeWindow = dt.timedelta(seconds=int(config.get('main', 'time_window'))).total_seconds()
@@ -204,3 +208,4 @@ if __name__ == '__main__':
 
 		node_data.join()
 
+	return
