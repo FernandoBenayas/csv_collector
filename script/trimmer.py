@@ -510,7 +510,8 @@ def final_trimmer(df):
 	columns_list = df.columns.values.tolist()
 
 	for i in range(0, len(columns_list) - 13):
-		if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
+		# if columns_list[i] == 'id' or columns_list[i] == '@timestamp' or columns_list[i] == 'changed_priority':
+		if columns_list[i] == 'changed_priority':
 			continue
 		df.drop(columns_list[i], axis=1, inplace=True)
 
@@ -520,6 +521,8 @@ def final_trimmer(df):
 		if row['err_type'] == 'buffer':
 			df.drop(index, inplace = True)
 	df.drop(['action', 'index_nearest', 'is_buffer'], axis=1, inplace=True)
+	df.drop(['node_connector_down', 'change_order'], axis=1, inplace=True)
+
 	return
 
 
