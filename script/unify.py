@@ -10,6 +10,13 @@ import shutil
 from collections import OrderedDict
 from nodedatachunks import NodeDataChunks
 
+
+"""
+TEST SCRIPT
+
+__author__ = "GSI"
+"""
+
 def unify(df):
 
 	flow_list = ['changed_output','changed_priority','changed_inport']

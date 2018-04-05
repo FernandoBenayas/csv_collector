@@ -4,6 +4,12 @@ from collections import OrderedDict
 import datetime as dt
 import os
 
+"""
+TopoDataChunks class. Completes DataChunks to reflect info about the topology.
+
+__author__ = "GSI"
+"""
+
 class TopoDataChunks(DataChunks):
 
 

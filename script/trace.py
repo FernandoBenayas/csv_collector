@@ -10,6 +10,12 @@ import shutil
 from collections import OrderedDict
 from nodedatachunks import NodeDataChunks
 
+"""
+Script that applies a time window.
+
+__author__ = "GSI"
+"""
+
 INDEX_NEAREST = {}
 
 def datetimefy(timestamp):

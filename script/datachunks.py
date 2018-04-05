@@ -2,7 +2,11 @@ import pandas as pd
 import datetime as dt
 import os
 
+"""
+Datachunks class. Divides the data in parts with a max size of 5000 entries.
 
+__author__ = "GSI"
+"""
 
 class DataChunks(object):
 

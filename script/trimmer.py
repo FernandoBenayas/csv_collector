@@ -11,6 +11,12 @@ from datachunks import DataChunks
 from nodedatachunks import NodeDataChunks
 from topodatachunks import TopoDataChunks
 
+"""
+Script that applies a time window.
+
+__author__ = "GSI"
+"""
+
 NODE_NUMBER_OF_FLOWS_PRIORITY = []
 NODE_NUMBER_OF_FLOWS_MATCHIN = []
 NODE_NUMBER_OF_FLOWS = 0

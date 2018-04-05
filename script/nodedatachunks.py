@@ -4,6 +4,11 @@ from collections import OrderedDict
 import datetime as dt
 import os
 
+"""
+NodeDataChunks class. Completes DataChunks to reflect info about nodes.
+
+__author__ = "GSI"
+"""
 class NodeDataChunks(DataChunks):
 
 

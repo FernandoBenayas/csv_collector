@@ -6,6 +6,12 @@ from time import sleep
 import stat
 import trimmer
 
+"""
+Collector script. Collects data from elasticsarch.
+
+__author__ = "GSI"
+"""
+
 def get_indices(es_url):
 
 	with open("list_indices", "wb") as out, open("log_indices", "wb") as err:
