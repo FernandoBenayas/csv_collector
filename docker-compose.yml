@@ -4,8 +4,8 @@ services:
   image: docker.elastic.co/elasticsearch/elasticsearch:5.5.1
   container_name: elasticsearch
   volumes:
-   - /home/fbenayas/testbed/data:/usr/share/elasticsearch/data
-   - /home/fbenayas/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+   - ./data:/usr/share/elasticsearch/data
+   - ./data/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
   environment:
    - http.host=0.0.0.0
    - transport.host=127.0.0.1
@@ -15,7 +15,7 @@ services:
   networks:
    - el
  csv_collector:
-  image: fernandobenayas/csv_collector:latest
+  image: registry.cluster.gsi.dit.upm.es/sdn/data-processor:1.0
   container_name: csv_collector
   depends_on:
    - elasticsearch

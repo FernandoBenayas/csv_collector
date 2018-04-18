@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     curl \
     vim \
- && pip install --upgrade pip \
+ && pip install --upgrade pip==9.0.1 \
  && pip install es2csv \
  && pip install numpy \
  && pip install pandas \
